@@ -21,17 +21,9 @@ object WavExporter {
         modIntensity: Float,
         modWave: WaveformType,
         modMode: ModulationMode,
-        carrierPhaseOffsetDeg: Float = 0f,
         isBinauralEnabled: Boolean = false,
         leftCarrierFreq: Float = 432f,
         rightCarrierFreq: Float = 472f,
-        isHarmonicsEnabled: Boolean = false,
-        h1Multiplier: Int = 2,
-        h1Volume: Float = 0.0f,
-        h2Multiplier: Int = 3,
-        h2Volume: Float = 0.0f,
-        h3Multiplier: Int = 4,
-        h3Volume: Float = 0.0f,
         isWhiteNoiseEnabled: Boolean = false,
         whiteNoiseLevel: Float = 0.15f,
         durationSeconds: Float,
@@ -64,12 +56,6 @@ object WavExporter {
         val phaseIncCL = (twoPi * carrierFreqL) / sampleRate
         val phaseIncCR = (twoPi * carrierFreqR) / sampleRate
         val phaseIncM = (twoPi * modFreq.toDouble()) / sampleRate
-        val phaseOffsetRad = Math.toRadians(carrierPhaseOffsetDeg.toDouble())
-
-        val h1M = h1Multiplier.toDouble()
-        val h2M = h2Multiplier.toDouble()
-        val h3M = h3Multiplier.toDouble()
-        val normHarmonics = if (isHarmonicsEnabled) 1.0f / kotlin.math.max(1.0f, 1.0f + 0.5f * (h1Volume + h2Volume + h3Volume)) else 1.0f
         val rng = java.util.Random()
 
         FileOutputStream(outputFile).use { fos ->
@@ -91,26 +77,8 @@ object WavExporter {
                 byteBuffer.clear()
 
                 for (i in 0 until chunkSize) {
-                    val baseL = carrierWave.calculate(carrierPhaseL + phaseOffsetRad)
-                    val baseR = carrierWave.calculate(carrierPhaseR + phaseOffsetRad)
-
-                    val rawCarrierL = if (isHarmonicsEnabled) {
-                        val h1 = kotlin.math.sin(h1M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h1Volume
-                        val h2 = kotlin.math.sin(h2M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h2Volume
-                        val h3 = kotlin.math.sin(h3M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h3Volume
-                        (baseL + h1 + h2 + h3) * normHarmonics
-                    } else {
-                        baseL
-                    }
-
-                    val rawCarrierR = if (isHarmonicsEnabled) {
-                        val h1 = kotlin.math.sin(h1M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h1Volume
-                        val h2 = kotlin.math.sin(h2M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h2Volume
-                        val h3 = kotlin.math.sin(h3M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h3Volume
-                        (baseR + h1 + h2 + h3) * normHarmonics
-                    } else {
-                        baseR
-                    }
+                    val rawCarrierL = carrierWave.calculate(carrierPhaseL)
+                    val rawCarrierR = carrierWave.calculate(carrierPhaseR)
 
                     val rawMod = modWave.calculate(modPhase)
 

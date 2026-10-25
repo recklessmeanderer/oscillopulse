@@ -26,6 +26,12 @@ interface PresetDao {
 
     @Query("SELECT COUNT(*) FROM presets")
     suspend fun getCount(): Int
+
+    @Query("DELETE FROM presets WHERE name = :name AND id != :keepId")
+    suspend fun deleteDuplicatesByName(name: String, keepId: Long)
+
+    @Query("DELETE FROM presets WHERE isFactory = 1")
+    suspend fun deleteAllFactoryPresets()
 }
 
 @Dao
@@ -43,7 +49,7 @@ interface RecordingDao {
     suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 5, exportSchema = false)
+@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun presetDao(): PresetDao
     abstract fun recordingDao(): RecordingDao
@@ -81,6 +87,7 @@ abstract class AppDatabase : RoomDatabase() {
         suspend fun populateFactoryPresets(dao: PresetDao) {
             val defaults = listOf(
                 PresetEntity(
+                    id = 1L,
                     name = "40 Hz Gamma Focus",
                     description = "Cognitive clarity & gamma wave brain entrainment (432Hz carrier + 40Hz square pulse)",
                     carrierFreq = 432.0f,
@@ -92,6 +99,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 2L,
                     name = "Alpha 10 Hz Relaxation",
                     description = "Flow state & calm focus with 432Hz carrier and gentle sine AM",
                     carrierFreq = 432.0f,
@@ -103,6 +111,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 3L,
                     name = "Theta 6 Hz Deep State",
                     description = "Deep meditation & creative visualization (216Hz carrier + 6Hz pulse)",
                     carrierFreq = 216.0f,
@@ -114,6 +123,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 4L,
                     name = "Delta 2.5 Hz Sleep",
                     description = "Deep restorative sleep & regeneration (108Hz carrier + 2.5Hz gentle wave)",
                     carrierFreq = 108.0f,
@@ -125,6 +135,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 5L,
                     name = "Solfeggio 528 Hz Pure",
                     description = "Pure resonance tone (528Hz continuous carrier wave)",
                     carrierFreq = 528.0f,
@@ -136,6 +147,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 6L,
                     name = "Sub-Bass 60 Hz Strobe",
                     description = "Powerful rhythmic low-frequency sawtooth pulse",
                     carrierFreq = 60.0f,
@@ -147,6 +159,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
+                    id = 7L,
                     name = "Binaural 40 Hz Gamma",
                     description = "Stereo 40Hz binaural beat (412Hz Left ear + 452Hz Right ear = 40Hz beat)",
                     carrierFreq = 432.0f,
@@ -161,24 +174,7 @@ abstract class AppDatabase : RoomDatabase() {
                     isFactory = true
                 ),
                 PresetEntity(
-                    name = "Harmonic Chime 216Hz",
-                    description = "Additive overtone chime (216Hz carrier layered with 2x, 3x, and 4x sine harmonics)",
-                    carrierFreq = 216.0f,
-                    carrierWave = WaveformType.SINE.name,
-                    modFreq = 1.0f,
-                    modIntensity = 0.0f,
-                    modWave = WaveformType.SINE.name,
-                    modMode = ModulationMode.ISOCHRONIC_PULSE.name,
-                    isHarmonicsEnabled = true,
-                    h1Multiplier = 2,
-                    h1Volume = 0.5f,
-                    h2Multiplier = 3,
-                    h2Volume = 0.3f,
-                    h3Multiplier = 4,
-                    h3Volume = 0.15f,
-                    isFactory = true
-                ),
-                PresetEntity(
+                    id = 8L,
                     name = "Delta Sleep & White Noise",
                     description = "100Hz soothing carrier + 2.5Hz Delta modulation blended with a relaxing white noise floor for acoustic masking and sleep",
                     carrierFreq = 100.0f,
@@ -194,6 +190,7 @@ abstract class AppDatabase : RoomDatabase() {
             )
             for (p in defaults) {
                 dao.insertPreset(p)
+                dao.deleteDuplicatesByName(p.name, p.id)
             }
         }
     }

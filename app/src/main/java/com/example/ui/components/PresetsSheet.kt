@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,7 @@ fun PresetsSheet(
     presets: List<PresetEntity>,
     onSelectPreset: (PresetEntity) -> Unit,
     onDeletePreset: (PresetEntity) -> Unit,
+    onRestoreFactoryPresets: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -79,6 +81,27 @@ fun PresetsSheet(
                             },
                             onDelete = { onDeletePreset(preset) }
                         )
+                    }
+                }
+            }
+
+            if (onRestoreFactoryPresets != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onRestoreFactoryPresets,
+                        modifier = Modifier.testTag("restore_factory_presets_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RestartAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Restore Built-In Presets", fontSize = 12.sp)
                     }
                 }
             }
@@ -144,9 +167,8 @@ fun PresetItemCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val phaseSuffix = if (preset.carrierPhaseOffset > 0f) " +${preset.carrierPhaseOffset.toInt()}°" else ""
                     Text(
-                        text = "Carrier: ${preset.carrierFreq.toInt()} Hz (${preset.carrierWave.lowercase()}$phaseSuffix)",
+                        text = "Carrier: ${preset.carrierFreq.toInt()} Hz (${preset.carrierWave.lowercase()})",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.primary
@@ -160,14 +182,15 @@ fun PresetItemCard(
                 }
             }
 
-            if (!preset.isFactory) {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete Preset",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.testTag("delete_preset_${preset.id}")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Delete Preset",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                )
             }
         }
     }

@@ -85,10 +85,10 @@ fun WaveformSelectorRow(
 fun CarrierFrequencySection(
     frequency: Float,
     waveform: WaveformType,
-    phaseOffset: Float,
     onFrequencyChange: (Float) -> Unit,
     onWaveformChange: (WaveformType) -> Unit,
-    onPhaseOffsetChange: (Float) -> Unit,
+    isFrequenciesLinked: Boolean = true,
+    onToggleFrequencyLink: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showDirectInput by remember { mutableStateOf(false) }
@@ -126,34 +126,77 @@ fun CarrierFrequencySection(
                     )
                 }
 
-                // Digital Frequency Readout (Tappable for direct numeric input)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF030712),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        width = 1.dp
-                    ),
-                    modifier = Modifier.clickable { showDirectInput = true }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Link status toggle badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isFrequenciesLinked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color(0xFF1E293B),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(
+                                if (isFrequenciesLinked) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color(0xFF334155)
+                            ),
+                            width = 1.dp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = onToggleFrequencyLink != null) { onToggleFrequencyLink?.invoke() }
+                            .testTag("carrier_link_badge")
                     ) {
-                        Text(
-                            text = String.format("%.1f", frequency),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Hz",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFrequenciesLinked) Icons.Default.Link else Icons.Default.LinkOff,
+                                contentDescription = if (isFrequenciesLinked) "Frequencies Linked" else "Frequencies Unlinked",
+                                tint = if (isFrequenciesLinked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (isFrequenciesLinked) "LINKED" else "UNLINKED",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isFrequenciesLinked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Digital Frequency Readout (Tappable for direct numeric input)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF030712),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                            width = 1.dp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showDirectInput = true }
+                            .testTag("carrier_frequency_readout")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = String.format("%.1f", frequency),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Hz",
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -248,105 +291,6 @@ fun CarrierFrequencySection(
                 selected = waveform,
                 onSelect = onWaveformChange
             )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Carrier Phase Shift Section
-            HorizontalDivider(color = Color(0xFF1E293B))
-            Spacer(modifier = Modifier.height(10.dp))
-
-            val radVal = (phaseOffset * (Math.PI / 180.0)).toFloat()
-            val radLabel = when {
-                kotlin.math.abs(phaseOffset - 0f) < 1f -> "0 rad"
-                kotlin.math.abs(phaseOffset - 90f) < 1f -> "π/2 rad"
-                kotlin.math.abs(phaseOffset - 180f) < 1f -> "π rad"
-                kotlin.math.abs(phaseOffset - 270f) < 1f -> "3π/2 rad"
-                kotlin.math.abs(phaseOffset - 360f) < 1f -> "2π rad"
-                else -> String.format("%.2f rad", radVal)
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Carrier Phase Shift",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Real-time waveform offset ($radLabel)",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF030712),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                        width = 1.dp
-                    )
-                ) {
-                    Text(
-                        text = "${phaseOffset.toInt()}°",
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Slider(
-                value = phaseOffset,
-                onValueChange = onPhaseOffsetChange,
-                valueRange = 0.0f..360.0f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("carrier_phase_slider")
-            )
-
-            // Phase quick anchors & fine-tune
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(0f to "0°", 90f to "90°", 180f to "180°", 270f to "270°").forEach { (deg, label) ->
-                        val isSelected = kotlin.math.abs(phaseOffset - deg) < 2f
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { onPhaseOffsetChange(deg) },
-                            label = { Text(label, fontSize = 10.sp) },
-                            modifier = Modifier.height(26.dp)
-                        )
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilledTonalButton(
-                        onClick = { onPhaseOffsetChange(((phaseOffset - 15f) % 360f + 360f) % 360f) },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Text("-15°", fontSize = 10.sp)
-                    }
-                    FilledTonalButton(
-                        onClick = { onPhaseOffsetChange(((phaseOffset + 15f) % 360f + 360f) % 360f) },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Text("+15°", fontSize = 10.sp)
-                    }
-                }
-            }
         }
     }
 
@@ -375,8 +319,12 @@ fun ModulationSection(
     onIntensityChange: (Float) -> Unit,
     onWaveformChange: (WaveformType) -> Unit,
     onModeChange: (ModulationMode) -> Unit,
+    isFrequenciesLinked: Boolean = true,
+    onToggleFrequencyLink: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var showDirectInput by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -416,33 +364,77 @@ fun ModulationSection(
                     )
                 }
 
-                // Modulation Frequency Display
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF030712),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFF59E0B).copy(alpha = 0.5f)),
-                        width = 1.dp
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Link status toggle badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isFrequenciesLinked) Color(0xFF78350F).copy(alpha = 0.5f) else Color(0xFF1E293B),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(
+                                if (isFrequenciesLinked) Color(0xFFF59E0B).copy(alpha = 0.6f) else Color(0xFF334155)
+                            ),
+                            width = 1.dp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = onToggleFrequencyLink != null) { onToggleFrequencyLink?.invoke() }
+                            .testTag("mod_link_badge")
                     ) {
-                        Text(
-                            text = String.format("%.1f", frequency),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color(0xFFF59E0B)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Hz",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFrequenciesLinked) Icons.Default.Link else Icons.Default.LinkOff,
+                                contentDescription = if (isFrequenciesLinked) "Frequencies Linked" else "Frequencies Unlinked",
+                                tint = if (isFrequenciesLinked) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (isFrequenciesLinked) "LINKED" else "UNLINKED",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isFrequenciesLinked) Color(0xFFFCD34D) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Modulation Frequency Display (Tappable for direct numeric input)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF030712),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                            width = 1.dp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showDirectInput = true }
+                            .testTag("mod_frequency_readout")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = String.format("%.1f", frequency),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFF59E0B)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Hz",
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -562,6 +554,20 @@ fun ModulationSection(
                 }
             }
         }
+    }
+
+    if (showDirectInput) {
+        DirectFrequencyInputDialog(
+            currentFreq = frequency,
+            min = 0.1f,
+            max = 100f,
+            title = "Enter Modulation / Beat Frequency (0.1 - 100 Hz)",
+            onDismiss = { showDirectInput = false },
+            onConfirm = {
+                onFrequencyChange(it)
+                showDirectInput = false
+            }
+        )
     }
 }
 

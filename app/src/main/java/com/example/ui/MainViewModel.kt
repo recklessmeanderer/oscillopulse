@@ -56,9 +56,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _carrierWave = MutableStateFlow(WaveformType.SINE)
     val carrierWave = _carrierWave.asStateFlow()
 
-    private val _carrierPhaseOffset = MutableStateFlow(0.0f) // 0 to 360 degrees
-    val carrierPhaseOffset = _carrierPhaseOffset.asStateFlow()
-
     // Binaural Beat generator states
     private val _isBinauralEnabled = MutableStateFlow(false)
     val isBinauralEnabled = _isBinauralEnabled.asStateFlow()
@@ -69,27 +66,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _rightCarrierFreq = MutableStateFlow(472.0f)
     val rightCarrierFreq = _rightCarrierFreq.asStateFlow()
 
-    // Additive Harmonics states
-    private val _isHarmonicsEnabled = MutableStateFlow(false)
-    val isHarmonicsEnabled = _isHarmonicsEnabled.asStateFlow()
-
-    private val _h1Multiplier = MutableStateFlow(2)
-    val h1Multiplier = _h1Multiplier.asStateFlow()
-
-    private val _h1Volume = MutableStateFlow(0.0f)
-    val h1Volume = _h1Volume.asStateFlow()
-
-    private val _h2Multiplier = MutableStateFlow(3)
-    val h2Multiplier = _h2Multiplier.asStateFlow()
-
-    private val _h2Volume = MutableStateFlow(0.0f)
-    val h2Volume = _h2Volume.asStateFlow()
-
-    private val _h3Multiplier = MutableStateFlow(4)
-    val h3Multiplier = _h3Multiplier.asStateFlow()
-
-    private val _h3Volume = MutableStateFlow(0.0f)
-    val h3Volume = _h3Volume.asStateFlow()
+    // Real-Time Cross-Card Frequency Linking State (links Carrier, Binaural L/R, and Modulation)
+    private val _isFrequenciesLinked = MutableStateFlow(true)
+    val isFrequenciesLinked = _isFrequenciesLinked.asStateFlow()
 
     // White Noise Floor states
     private val _isWhiteNoiseEnabled = MutableStateFlow(false)
@@ -166,18 +145,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Check if database needs factory presets population
+        // Check if database needs factory presets population or deduplication
         viewModelScope.launch(Dispatchers.IO) {
-            if (presetDao.getCount() == 0) {
-                AppDatabase.populateFactoryPresets(presetDao)
-            }
+            AppDatabase.populateFactoryPresets(presetDao)
         }
     }
 
     private fun updateAudioEngineParams() {
         audioEngine.carrierFreq = _carrierFreq.value
         audioEngine.carrierWave = _carrierWave.value
-        audioEngine.carrierPhaseOffsetDeg = _carrierPhaseOffset.value
         audioEngine.isBinauralEnabled = _isBinauralEnabled.value
         audioEngine.leftCarrierFreq = _leftCarrierFreq.value
         audioEngine.rightCarrierFreq = _rightCarrierFreq.value
@@ -185,13 +161,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.modIntensity = _modIntensity.value
         audioEngine.modWave = _modWave.value
         audioEngine.modMode = _modMode.value
-        audioEngine.isHarmonicsEnabled = _isHarmonicsEnabled.value
-        audioEngine.h1Multiplier = _h1Multiplier.value
-        audioEngine.h1Volume = _h1Volume.value
-        audioEngine.h2Multiplier = _h2Multiplier.value
-        audioEngine.h2Volume = _h2Volume.value
-        audioEngine.h3Multiplier = _h3Multiplier.value
-        audioEngine.h3Volume = _h3Volume.value
         audioEngine.isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value
         audioEngine.whiteNoiseLevel = _whiteNoiseLevel.value
         audioEngine.volume = _volume.value
@@ -200,12 +169,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.bitDepth = _bitDepth.value
     }
 
+    fun toggleFrequencyLink() {
+        val next = !_isFrequenciesLinked.value
+        _isFrequenciesLinked.value = next
+        _userFeedbackMessage.value = if (next) "Cross-card frequency linking active" else "Frequency linking unlinked"
+    }
+
+    fun setFrequencyLink(linked: Boolean) {
+        _isFrequenciesLinked.value = linked
+    }
+
     fun setCarrierFreq(freq: Float) {
         val clamped = freq.coerceIn(1.0f, 1000.0f)
         _carrierFreq.value = clamped
         audioEngine.carrierFreq = clamped
-        // If binaural is enabled, keep left synced unless independently adjusted
-        if (!_isBinauralEnabled.value) {
+
+        if (_isFrequenciesLinked.value) {
+            // Shift Left and Right carriers preserving current beat offset
+            val offset = _rightCarrierFreq.value - _leftCarrierFreq.value
+            _leftCarrierFreq.value = clamped
+            audioEngine.leftCarrierFreq = clamped
+
+            val newRight = (clamped + offset).coerceIn(1.0f, 1000.0f)
+            _rightCarrierFreq.value = newRight
+            audioEngine.rightCarrierFreq = newRight
+        } else if (!_isBinauralEnabled.value) {
             _leftCarrierFreq.value = clamped
             audioEngine.leftCarrierFreq = clamped
         }
@@ -214,12 +202,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setCarrierWave(wave: WaveformType) {
         _carrierWave.value = wave
         audioEngine.carrierWave = wave
-    }
-
-    fun setCarrierPhaseOffset(degrees: Float) {
-        val normalized = ((degrees % 360f) + 360f) % 360f
-        _carrierPhaseOffset.value = normalized
-        audioEngine.carrierPhaseOffsetDeg = normalized
     }
 
     fun setBinauralEnabled(enabled: Boolean) {
@@ -240,76 +222,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = freq.coerceIn(1.0f, 1000.0f)
         _leftCarrierFreq.value = clamped
         audioEngine.leftCarrierFreq = clamped
+
+        if (_isFrequenciesLinked.value) {
+            // Synchronize master carrier with Left ear
+            _carrierFreq.value = clamped
+            audioEngine.carrierFreq = clamped
+
+            // Update modulation frequency with resulting beat difference if within range
+            val diff = kotlin.math.abs(_rightCarrierFreq.value - clamped)
+            if (diff in 0.1f..100.0f) {
+                _modFreq.value = diff
+                audioEngine.modFreq = diff
+            }
+        }
     }
 
     fun setRightCarrierFreq(freq: Float) {
         val clamped = freq.coerceIn(1.0f, 1000.0f)
         _rightCarrierFreq.value = clamped
         audioEngine.rightCarrierFreq = clamped
+
+        if (_isFrequenciesLinked.value) {
+            val diff = kotlin.math.abs(clamped - _leftCarrierFreq.value)
+            if (diff in 0.1f..100.0f) {
+                _modFreq.value = diff
+                audioEngine.modFreq = diff
+            }
+        }
     }
 
     fun setBinauralBeatDiff(diffHz: Float) {
-        val newRight = (_leftCarrierFreq.value + diffHz).coerceIn(1.0f, 1000.0f)
+        val clampedDiff = diffHz.coerceIn(0.1f, 100.0f)
+        val newRight = (_leftCarrierFreq.value + clampedDiff).coerceIn(1.0f, 1000.0f)
         _rightCarrierFreq.value = newRight
         audioEngine.rightCarrierFreq = newRight
-    }
 
-    // Additive Harmonics Controls
-    fun setHarmonicsEnabled(enabled: Boolean) {
-        _isHarmonicsEnabled.value = enabled
-        audioEngine.isHarmonicsEnabled = enabled
-        _userFeedbackMessage.value = if (enabled) "Additive Harmonics enabled" else "Additive Harmonics disabled"
-    }
-
-    fun toggleHarmonics() {
-        setHarmonicsEnabled(!_isHarmonicsEnabled.value)
-    }
-
-    fun setHarmonicMultiplier(harmonicIndex: Int, multiplier: Int) {
-        val clamped = multiplier.coerceIn(2, 16)
-        when (harmonicIndex) {
-            1 -> {
-                _h1Multiplier.value = clamped
-                audioEngine.h1Multiplier = clamped
-            }
-            2 -> {
-                _h2Multiplier.value = clamped
-                audioEngine.h2Multiplier = clamped
-            }
-            3 -> {
-                _h3Multiplier.value = clamped
-                audioEngine.h3Multiplier = clamped
-            }
-        }
-    }
-
-    fun setHarmonicVolume(harmonicIndex: Int, vol: Float) {
-        val clamped = vol.coerceIn(0.0f, 1.0f)
-        when (harmonicIndex) {
-            1 -> {
-                _h1Volume.value = clamped
-                audioEngine.h1Volume = clamped
-            }
-            2 -> {
-                _h2Volume.value = clamped
-                audioEngine.h2Volume = clamped
-            }
-            3 -> {
-                _h3Volume.value = clamped
-                audioEngine.h3Volume = clamped
-            }
-        }
-    }
-
-    fun setHarmonicProfile(h1M: Int, h1V: Float, h2M: Int, h2V: Float, h3M: Int, h3V: Float) {
-        setHarmonicMultiplier(1, h1M)
-        setHarmonicVolume(1, h1V)
-        setHarmonicMultiplier(2, h2M)
-        setHarmonicVolume(2, h2V)
-        setHarmonicMultiplier(3, h3M)
-        setHarmonicVolume(3, h3V)
-        if (!_isHarmonicsEnabled.value) {
-            setHarmonicsEnabled(true)
+        if (_isFrequenciesLinked.value) {
+            _modFreq.value = clampedDiff
+            audioEngine.modFreq = clampedDiff
         }
     }
 
@@ -381,6 +331,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = freq.coerceIn(0.1f, 100.0f)
         _modFreq.value = clamped
         audioEngine.modFreq = clamped
+
+        if (_isFrequenciesLinked.value) {
+            // Synchronize Binaural right carrier so that beat difference equals modFreq
+            val newRight = (_leftCarrierFreq.value + clamped).coerceIn(1.0f, 1000.0f)
+            _rightCarrierFreq.value = newRight
+            audioEngine.rightCarrierFreq = newRight
+        }
     }
 
     fun setModIntensity(intensity: Float) {
@@ -461,17 +418,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun applyPreset(preset: PresetEntity) {
         setCarrierFreq(preset.carrierFreq)
         setCarrierWave(preset.getCarrierWaveType())
-        setCarrierPhaseOffset(preset.carrierPhaseOffset)
         setBinauralEnabled(preset.isBinauralEnabled)
         setLeftCarrierFreq(preset.leftCarrierFreq)
         setRightCarrierFreq(preset.rightCarrierFreq)
-        setHarmonicsEnabled(preset.isHarmonicsEnabled)
-        setHarmonicMultiplier(1, preset.h1Multiplier)
-        setHarmonicVolume(1, preset.h1Volume)
-        setHarmonicMultiplier(2, preset.h2Multiplier)
-        setHarmonicVolume(2, preset.h2Volume)
-        setHarmonicMultiplier(3, preset.h3Multiplier)
-        setHarmonicVolume(3, preset.h3Volume)
         setWhiteNoiseEnabled(preset.isWhiteNoiseEnabled)
         setWhiteNoiseLevel(preset.whiteNoiseLevel)
         setModFreq(preset.modFreq)
@@ -488,17 +437,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 description = description,
                 carrierFreq = _carrierFreq.value,
                 carrierWave = _carrierWave.value.name,
-                carrierPhaseOffset = _carrierPhaseOffset.value,
                 isBinauralEnabled = _isBinauralEnabled.value,
                 leftCarrierFreq = _leftCarrierFreq.value,
                 rightCarrierFreq = _rightCarrierFreq.value,
-                isHarmonicsEnabled = _isHarmonicsEnabled.value,
-                h1Multiplier = _h1Multiplier.value,
-                h1Volume = _h1Volume.value,
-                h2Multiplier = _h2Multiplier.value,
-                h2Volume = _h2Volume.value,
-                h3Multiplier = _h3Multiplier.value,
-                h3Volume = _h3Volume.value,
                 isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value,
                 whiteNoiseLevel = _whiteNoiseLevel.value,
                 modFreq = _modFreq.value,
@@ -518,6 +459,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             presetDao.deletePreset(preset)
             _userFeedbackMessage.value = "Deleted preset: ${preset.name}"
+        }
+    }
+
+    fun restoreFactoryPresets() {
+        viewModelScope.launch(Dispatchers.IO) {
+            AppDatabase.populateFactoryPresets(presetDao)
+            _userFeedbackMessage.value = "Restored built-in factory presets"
         }
     }
 
@@ -551,17 +499,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     outputFile = outFile,
                     carrierFreq = _carrierFreq.value,
                     carrierWave = _carrierWave.value,
-                    carrierPhaseOffsetDeg = _carrierPhaseOffset.value,
                     isBinauralEnabled = _isBinauralEnabled.value,
                     leftCarrierFreq = _leftCarrierFreq.value,
                     rightCarrierFreq = _rightCarrierFreq.value,
-                    isHarmonicsEnabled = _isHarmonicsEnabled.value,
-                    h1Multiplier = _h1Multiplier.value,
-                    h1Volume = _h1Volume.value,
-                    h2Multiplier = _h2Multiplier.value,
-                    h2Volume = _h2Volume.value,
-                    h3Multiplier = _h3Multiplier.value,
-                    h3Volume = _h3Volume.value,
                     isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value,
                     whiteNoiseLevel = _whiteNoiseLevel.value,
                     modFreq = _modFreq.value,

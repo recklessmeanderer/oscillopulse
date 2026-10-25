@@ -41,17 +41,10 @@ fun MainGeneratorScreen(
     // Collect ViewModel states
     val carrierFreq by viewModel.carrierFreq.collectAsStateWithLifecycle()
     val carrierWave by viewModel.carrierWave.collectAsStateWithLifecycle()
-    val carrierPhaseOffset by viewModel.carrierPhaseOffset.collectAsStateWithLifecycle()
     val isBinauralEnabled by viewModel.isBinauralEnabled.collectAsStateWithLifecycle()
     val leftCarrierFreq by viewModel.leftCarrierFreq.collectAsStateWithLifecycle()
     val rightCarrierFreq by viewModel.rightCarrierFreq.collectAsStateWithLifecycle()
-    val isHarmonicsEnabled by viewModel.isHarmonicsEnabled.collectAsStateWithLifecycle()
-    val h1Multiplier by viewModel.h1Multiplier.collectAsStateWithLifecycle()
-    val h1Volume by viewModel.h1Volume.collectAsStateWithLifecycle()
-    val h2Multiplier by viewModel.h2Multiplier.collectAsStateWithLifecycle()
-    val h2Volume by viewModel.h2Volume.collectAsStateWithLifecycle()
-    val h3Multiplier by viewModel.h3Multiplier.collectAsStateWithLifecycle()
-    val h3Volume by viewModel.h3Volume.collectAsStateWithLifecycle()
+    val isFrequenciesLinked by viewModel.isFrequenciesLinked.collectAsStateWithLifecycle()
     val isWhiteNoiseEnabled by viewModel.isWhiteNoiseEnabled.collectAsStateWithLifecycle()
     val whiteNoiseLevel by viewModel.whiteNoiseLevel.collectAsStateWithLifecycle()
     val modFreq by viewModel.modFreq.collectAsStateWithLifecycle()
@@ -168,16 +161,8 @@ fun MainGeneratorScreen(
                             showSavePresetDialog = true
                             true
                         }
-                        KeyEvent.KEYCODE_P -> {
-                            viewModel.setCarrierPhaseOffset((carrierPhaseOffset + 45f) % 360f)
-                            true
-                        }
                         KeyEvent.KEYCODE_B -> {
                             viewModel.toggleBinauralBeat()
-                            true
-                        }
-                        KeyEvent.KEYCODE_H -> {
-                            viewModel.toggleHarmonics()
                             true
                         }
                         KeyEvent.KEYCODE_N -> {
@@ -322,14 +307,20 @@ fun MainGeneratorScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 840.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             // Quick Presets Strip
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -550,10 +541,10 @@ fun MainGeneratorScreen(
                                 CarrierFrequencySection(
                                     frequency = carrierFreq,
                                     waveform = carrierWave,
-                                    phaseOffset = carrierPhaseOffset,
                                     onFrequencyChange = { viewModel.setCarrierFreq(it) },
                                     onWaveformChange = { viewModel.setCarrierWave(it) },
-                                    onPhaseOffsetChange = { viewModel.setCarrierPhaseOffset(it) }
+                                    isFrequenciesLinked = isFrequenciesLinked,
+                                    onToggleFrequencyLink = { viewModel.toggleFrequencyLink() }
                                 )
                             }
                             AppCardModule.BINAURAL -> {
@@ -564,29 +555,9 @@ fun MainGeneratorScreen(
                                     onToggleBinaural = { viewModel.setBinauralEnabled(it) },
                                     onLeftFreqChange = { viewModel.setLeftCarrierFreq(it) },
                                     onRightFreqChange = { viewModel.setRightCarrierFreq(it) },
-                                    onSetBeatDiff = { viewModel.setBinauralBeatDiff(it) }
-                                )
-                            }
-                            AppCardModule.HARMONICS -> {
-                                AdditiveHarmonicsSection(
-                                    isHarmonicsEnabled = isHarmonicsEnabled,
-                                    carrierFreq = carrierFreq,
-                                    h1Multiplier = h1Multiplier,
-                                    h1Volume = h1Volume,
-                                    h2Multiplier = h2Multiplier,
-                                    h2Volume = h2Volume,
-                                    h3Multiplier = h3Multiplier,
-                                    h3Volume = h3Volume,
-                                    onToggleHarmonics = { viewModel.setHarmonicsEnabled(it) },
-                                    onH1MultiplierChange = { viewModel.setHarmonicMultiplier(1, it) },
-                                    onH1VolumeChange = { viewModel.setHarmonicVolume(1, it) },
-                                    onH2MultiplierChange = { viewModel.setHarmonicMultiplier(2, it) },
-                                    onH2VolumeChange = { viewModel.setHarmonicVolume(2, it) },
-                                    onH3MultiplierChange = { viewModel.setHarmonicMultiplier(3, it) },
-                                    onH3VolumeChange = { viewModel.setHarmonicVolume(3, it) },
-                                    onSelectProfile = { h1M, h1V, h2M, h2V, h3M, h3V ->
-                                        viewModel.setHarmonicProfile(h1M, h1V, h2M, h2V, h3M, h3V)
-                                    }
+                                    onSetBeatDiff = { viewModel.setBinauralBeatDiff(it) },
+                                    isFrequenciesLinked = isFrequenciesLinked,
+                                    onToggleFrequencyLink = { viewModel.toggleFrequencyLink() }
                                 )
                             }
                             AppCardModule.MODULATION -> {
@@ -598,7 +569,9 @@ fun MainGeneratorScreen(
                                     onFrequencyChange = { viewModel.setModFreq(it) },
                                     onIntensityChange = { viewModel.setModIntensity(it) },
                                     onWaveformChange = { viewModel.setModWave(it) },
-                                    onModeChange = { viewModel.setModMode(it) }
+                                    onModeChange = { viewModel.setModMode(it) },
+                                    isFrequenciesLinked = isFrequenciesLinked,
+                                    onToggleFrequencyLink = { viewModel.toggleFrequencyLink() }
                                 )
                             }
                         }
@@ -607,6 +580,7 @@ fun MainGeneratorScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
         }
     }
 
@@ -669,6 +643,7 @@ fun MainGeneratorScreen(
             presets = allPresets,
             onSelectPreset = { viewModel.applyPreset(it) },
             onDeletePreset = { viewModel.deletePreset(it) },
+            onRestoreFactoryPresets = { viewModel.restoreFactoryPresets() },
             onDismiss = { showPresetsSheet = false }
         )
     }

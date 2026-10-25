@@ -11,9 +11,8 @@ enum class AppCardModule(
 ) {
     OSCILLOSCOPE("oscilloscope", "Oscilloscope Monitor", "Real-time waveform visualizer & triggers"),
     TRANSPORT("transport", "Master Transport Bar", "Play, record, VU level meter & master volume"),
-    CARRIER("carrier", "Carrier Frequency & Waveform", "1–1000 Hz, 4 waveforms, phase shift slider"),
+    CARRIER("carrier", "Carrier Frequency & Waveform", "1–1000 Hz, 4 waveforms (Sine, Square, Saw, Tri)"),
     BINAURAL("binaural", "Binaural Beats Generator", "Independent L/R stereo carriers & entrainment"),
-    HARMONICS("harmonics", "Additive Harmonics", "Up to 3 sine wave overtones with volume sliders"),
     MODULATION("modulation", "Modulation & Entrainment", "Isochronic pulses, AM depth & frequency");
 
     companion object {
@@ -22,7 +21,6 @@ enum class AppCardModule(
             TRANSPORT,
             CARRIER,
             BINAURAL,
-            HARMONICS,
             MODULATION
         )
 

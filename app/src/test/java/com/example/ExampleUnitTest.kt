@@ -15,28 +15,6 @@ class ExampleUnitTest {
   }
 
   @Test
-  fun testPresetEntityHarmonics() {
-    val preset = com.example.data.PresetEntity(
-      name = "Chime Test",
-      carrierFreq = 220f,
-      isHarmonicsEnabled = true,
-      h1Multiplier = 2,
-      h1Volume = 0.5f,
-      h2Multiplier = 3,
-      h2Volume = 0.25f,
-      h3Multiplier = 4,
-      h3Volume = 0.125f
-    )
-    assertTrue(preset.isHarmonicsEnabled)
-    assertEquals(2, preset.h1Multiplier)
-    assertEquals(0.5f, preset.h1Volume, 0.001f)
-    assertEquals(3, preset.h2Multiplier)
-    assertEquals(0.25f, preset.h2Volume, 0.001f)
-    assertEquals(4, preset.h3Multiplier)
-    assertEquals(0.125f, preset.h3Volume, 0.001f)
-  }
-
-  @Test
   fun testPresetEntityWhiteNoise() {
     val preset = com.example.data.PresetEntity(
       name = "White Noise Masking",
@@ -51,7 +29,7 @@ class ExampleUnitTest {
   @Test
   fun testAppCardModuleOrder() {
     val defaultList = com.example.model.AppCardModule.DEFAULT_ORDER
-    assertEquals(6, defaultList.size)
+    assertEquals(5, defaultList.size)
     assertEquals(com.example.model.AppCardModule.OSCILLOSCOPE, defaultList[0])
     assertEquals(com.example.model.AppCardModule.TRANSPORT, defaultList[1])
     assertEquals(com.example.model.AppCardModule.CARRIER, defaultList[2])
@@ -63,5 +41,30 @@ class ExampleUnitTest {
     mutableList.add(0, carrier)
     assertEquals(com.example.model.AppCardModule.CARRIER, mutableList[0])
     assertEquals(com.example.model.AppCardModule.OSCILLOSCOPE, mutableList[1])
+  }
+
+  @Test
+  fun testDeterministicPresetIds() {
+    val p1 = com.example.data.PresetEntity(id = 1L, name = "40 Hz Gamma Focus", isFactory = true)
+    val p2 = com.example.data.PresetEntity(id = 2L, name = "Alpha 10 Hz Relaxation", isFactory = true)
+    assertEquals(1L, p1.id)
+    assertEquals(2L, p2.id)
+    assertTrue(p1.isFactory)
+    assertNotEquals(p1.id, p2.id)
+  }
+
+  @Test
+  fun testFrequencyLinkingMath() {
+    // When carrier changes from 432 to 528 with 40Hz beat diff
+    val leftInitial = 432f
+    val rightInitial = 472f
+    val beatOffset = rightInitial - leftInitial
+    assertEquals(40f, beatOffset, 0.001f)
+
+    val newCarrier = 528f
+    val newLeft = newCarrier
+    val newRight = newCarrier + beatOffset
+    assertEquals(568f, newRight, 0.001f)
+    assertEquals(40f, newRight - newLeft, 0.001f)
   }
 }

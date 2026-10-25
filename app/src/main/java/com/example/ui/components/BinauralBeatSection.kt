@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,9 +37,13 @@ fun BinauralBeatSection(
     onLeftFreqChange: (Float) -> Unit,
     onRightFreqChange: (Float) -> Unit,
     onSetBeatDiff: (Float) -> Unit,
+    isFrequenciesLinked: Boolean = true,
+    onToggleFrequencyLink: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val beatDiff = abs(rightCarrierFreq - leftCarrierFreq)
+    var showBeatDirectInput by remember { mutableStateOf(false) }
+
     val brainwaveBand = when {
         beatDiff >= 30f -> "Gamma Band (Peak Focus / 40Hz Entrainment)"
         beatDiff >= 13f -> "Beta Band (Active Alertness)"
@@ -112,12 +118,52 @@ fun BinauralBeatSection(
                     }
                 }
 
-                // Dedicated Toggle Switch
-                Switch(
-                    checked = isBinauralEnabled,
-                    onCheckedChange = onToggleBinaural,
-                    modifier = Modifier.testTag("binaural_switch")
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Link status toggle badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isFrequenciesLinked) accentColor.copy(alpha = 0.18f) else Color(0xFF1E293B),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(
+                                if (isFrequenciesLinked) accentColor.copy(alpha = 0.6f) else Color(0xFF334155)
+                            ),
+                            width = 1.dp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = onToggleFrequencyLink != null) { onToggleFrequencyLink?.invoke() }
+                            .testTag("binaural_link_badge")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFrequenciesLinked) Icons.Default.Link else Icons.Default.LinkOff,
+                                contentDescription = if (isFrequenciesLinked) "Frequencies Linked" else "Frequencies Unlinked",
+                                tint = if (isFrequenciesLinked) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (isFrequenciesLinked) "LINKED" else "UNLINKED",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isFrequenciesLinked) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Dedicated Toggle Switch
+                    Switch(
+                        checked = isBinauralEnabled,
+                        onCheckedChange = onToggleBinaural,
+                        modifier = Modifier.testTag("binaural_switch")
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -155,7 +201,7 @@ fun BinauralBeatSection(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Binaural Beat Frequency Readout
+                    // Binaural Beat Frequency Readout (Tappable for direct numeric input)
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = Color(0xFF030712),
@@ -163,7 +209,11 @@ fun BinauralBeatSection(
                             brush = androidx.compose.ui.graphics.SolidColor(accentColor.copy(alpha = 0.5f)),
                             width = 1.dp
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showBeatDirectInput = true }
+                            .testTag("binaural_beat_readout")
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -171,13 +221,20 @@ fun BinauralBeatSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text(
-                                    text = "PERCEIVED BINAURAL BEAT",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "PERCEIVED BINAURAL BEAT",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "✎ Tap to edit",
+                                        fontSize = 9.sp,
+                                        color = accentColor.copy(alpha = 0.8f)
+                                    )
+                                }
                                 Text(
                                     text = brainwaveBand,
                                     fontSize = 11.sp,
@@ -291,6 +348,20 @@ fun BinauralBeatSection(
             }
         }
     }
+
+    if (showBeatDirectInput) {
+        DirectFrequencyInputDialog(
+            currentFreq = beatDiff,
+            min = 0.1f,
+            max = 100f,
+            title = "Enter Perceived Beat Difference Δf (0.1 - 100 Hz)",
+            onDismiss = { showBeatDirectInput = false },
+            onConfirm = {
+                onSetBeatDiff(it)
+                showBeatDirectInput = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -302,6 +373,8 @@ fun ChannelCarrierSlider(
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
+    var showDirectInput by remember { mutableStateOf(false) }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -335,7 +408,11 @@ fun ChannelCarrierSlider(
                 border = CardDefaults.outlinedCardBorder().copy(
                     brush = androidx.compose.ui.graphics.SolidColor(accentColor.copy(alpha = 0.4f)),
                     width = 1.dp
-                )
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showDirectInput = true }
+                    .testTag("carrier_slider_${channelTag.lowercase()}_readout")
             ) {
                 Text(
                     text = "${frequency.toInt()} Hz",
@@ -392,5 +469,19 @@ fun ChannelCarrierSlider(
                 }
             }
         }
+    }
+
+    if (showDirectInput) {
+        DirectFrequencyInputDialog(
+            currentFreq = frequency,
+            min = 1f,
+            max = 1000f,
+            title = "Enter $label (1 - 1000 Hz)",
+            onDismiss = { showDirectInput = false },
+            onConfirm = {
+                onFrequencyChange(it)
+                showDirectInput = false
+            }
+        )
     }
 }
