@@ -73,6 +73,7 @@ fun MainGeneratorScreen(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showPresetsSheet by remember { mutableStateOf(false) }
     var showRecordingsSheet by remember { mutableStateOf(false) }
+    var isScopeCollapsed by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequester = remember { FocusRequester() }
@@ -172,6 +173,10 @@ fun MainGeneratorScreen(
                                 ScopeTheme.WHITE -> ScopeTheme.CYAN
                             }
                             viewModel.setScopeTheme(nextTheme)
+                            true
+                        }
+                        KeyEvent.KEYCODE_C -> {
+                            isScopeCollapsed = !isScopeCollapsed
                             true
                         }
                         KeyEvent.KEYCODE_SLASH -> {
@@ -367,7 +372,9 @@ fun MainGeneratorScreen(
                 scopeTheme = scopeTheme,
                 isBinauralEnabled = isBinauralEnabled,
                 leftCarrierFreq = leftCarrierFreq,
-                rightCarrierFreq = rightCarrierFreq
+                rightCarrierFreq = rightCarrierFreq,
+                isCollapsed = isScopeCollapsed,
+                onToggleCollapse = { isScopeCollapsed = !isScopeCollapsed }
             )
 
             // Master Transport Controls (Play, Record, Volume, VU Level Meter)

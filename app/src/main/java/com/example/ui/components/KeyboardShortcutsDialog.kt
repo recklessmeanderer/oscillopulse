@@ -32,6 +32,7 @@ fun KeyboardShortcutsDialog(onDismiss: () -> Unit) {
         ShortcutInfo("S", "Open Save Custom Preset dialog"),
         ShortcutInfo("E", "Open WAV Export dialog"),
         ShortcutInfo("O", "Cycle oscilloscope theme"),
+        ShortcutInfo("C", "Collapse / expand oscilloscope canvas"),
         ShortcutInfo("T", "Toggle oscilloscope trigger (Auto / Free)"),
         ShortcutInfo("?", "Show this Keyboard Shortcuts reference")
     )

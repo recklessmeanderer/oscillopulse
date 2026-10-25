@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,8 +39,17 @@ fun OscilloscopeCanvas(
     isBinauralEnabled: Boolean = false,
     leftCarrierFreq: Float = 0f,
     rightCarrierFreq: Float = 0f,
+    isCollapsed: Boolean = false,
+    onToggleCollapse: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var internalCollapsed by remember { mutableStateOf(isCollapsed) }
+    val effectiveCollapsed = if (onToggleCollapse != null) isCollapsed else internalCollapsed
+    val toggleCollapse: () -> Unit = {
+        if (onToggleCollapse != null) onToggleCollapse()
+        else internalCollapsed = !internalCollapsed
+    }
+
     var timebaseZoom by remember { mutableStateOf(2f) } // 1x, 2f, 4f
     var amplitudeGain by remember { mutableStateOf(1.0f) }
     var triggerEnabled by remember { mutableStateOf(true) }
@@ -97,10 +107,12 @@ fun OscilloscopeCanvas(
         )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Oscilloscope Header Bar
+            // Oscilloscope Header Bar (Tap header to expand/collapse)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { toggleCollapse() }
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -146,264 +158,304 @@ fun OscilloscopeCanvas(
                     }
                 }
 
-                // Recording Indicator if active
-                if (isRecording) {
-                    val sec = (recordingDurationMs / 1000) % 60
-                    val min = (recordingDurationMs / 60000)
-                    val ms = (recordingDurationMs % 1000) / 100
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .background(Color(0xFF3B0712), RoundedCornerShape(6.dp))
-                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFFEF4444).copy(alpha = recAlpha))
-                        )
-                        Text(
-                            text = String.format("REC %02d:%02d.%d", min, sec, ms),
-                            color = Color(0xFFFCA5A5),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    Text(
-                        text = if (isPlaying) "REAL-TIME LIVE" else "STANDBY",
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isPlaying) Color(0xFF10B981) else Color(0xFF64748B)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Main Scope Screen Canvas
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF030712))
-                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
-                    .clickable { isFrozen = !isFrozen }
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-                    val centerY = h / 2f
-
-                    // Draw Grid
-                    val numCols = 10
-                    val numRows = 8
-                    val colWidth = w / numCols
-                    val rowHeight = h / numRows
-
-                    // Subtle background lines
-                    for (c in 1 until numCols) {
-                        val x = c * colWidth
-                        drawLine(
-                            color = if (c == numCols / 2) gridColor else gridSubColor,
-                            start = Offset(x, 0f),
-                            end = Offset(x, h),
-                            strokeWidth = if (c == numCols / 2) 1.5f else 0.8f
-                        )
-                    }
-                    for (r in 1 until numRows) {
-                        val y = r * rowHeight
-                        drawLine(
-                            color = if (r == numRows / 2) gridColor else gridSubColor,
-                            start = Offset(0f, y),
-                            end = Offset(w, y),
-                            strokeWidth = if (r == numRows / 2) 1.5f else 0.8f
-                        )
-                    }
-
-                    // Center Crosshair ticks
-                    val centerTickSize = 4f
-                    for (c in 0..numCols * 5) {
-                        val x = c * (colWidth / 5)
-                        drawLine(
-                            color = gridColor,
-                            start = Offset(x, centerY - centerTickSize),
-                            end = Offset(x, centerY + centerTickSize),
-                            strokeWidth = 1f
-                        )
-                    }
-                    val centerX = w / 2f
-                    for (r in 0..numRows * 5) {
-                        val y = r * (rowHeight / 5)
-                        drawLine(
-                            color = gridColor,
-                            start = Offset(centerX - centerTickSize, y),
-                            end = Offset(centerX + centerTickSize, y),
-                            strokeWidth = 1f
-                        )
-                    }
-
-                    // Render Waveform trace
-                    if (samples.isNotEmpty()) {
-                        // Find trigger zero-crossing (rising slope from <= 0 to > 0)
-                        var startIndex = 0
-                        if (triggerEnabled && !isFrozen) {
-                            val maxSearch = (samples.size / 3).coerceAtLeast(1)
-                            for (i in 1 until maxSearch) {
-                                if (samples[i - 1] <= 0f && samples[i] > 0f) {
-                                    startIndex = i
-                                    break
-                                }
-                            }
-                        }
-
-                        // Determine points to draw based on timebase zoom
-                        val effectiveSamples = (samples.size / timebaseZoom).toInt().coerceIn(32, samples.size - startIndex)
-                        val stepX = w / (effectiveSamples - 1).toFloat()
-
-                        val path = Path()
-                        val glowPath = Path()
-
-                        for (i in 0 until effectiveSamples) {
-                            val sampleIdx = startIndex + i
-                            if (sampleIdx >= samples.size) break
-                            val sampleVal = samples[sampleIdx] * amplitudeGain
-                            val clampedSample = sampleVal.coerceIn(-1.5f, 1.5f)
-                            // Map -1..1 to screen height with 0 at centerY
-                            val y = centerY - (clampedSample * (h * 0.42f))
-                            val x = i * stepX
-
-                            if (i == 0) {
-                                path.moveTo(x, y)
-                                glowPath.moveTo(x, y)
-                            } else {
-                                path.lineTo(x, y)
-                                glowPath.lineTo(x, y)
-                            }
-                        }
-
-                        // Draw outer glow
-                        drawPath(
-                            path = glowPath,
-                            color = glowColor,
-                            style = Stroke(width = 6f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
-                        // Draw core trace
-                        drawPath(
-                            path = path,
-                            color = traceColor,
-                            style = Stroke(width = 2.2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                        )
-                    }
-                }
-
-                // Overlay technical metrics at top-right of canvas
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .background(Color(0x99030712), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    Text(
-                        text = String.format("Vpp: %.2f V", vpp),
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = traceColor
-                    )
-                    Text(
-                        text = String.format("RMS: %.2f", rms),
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Text(
-                        text = String.format("Zoom: %.1fx", timebaseZoom),
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF64748B)
-                    )
-                }
-
-                // Overlay Frequency info at bottom-left of canvas
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(8.dp)
-                        .background(Color(0x99030712), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (isBinauralEnabled) {
+                    // Recording Indicator if active
+                    if (isRecording) {
+                        val sec = (recordingDurationMs / 1000) % 60
+                        val min = (recordingDurationMs / 60000)
+                        val ms = (recordingDurationMs % 1000) / 100
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .background(Color(0xFF3B0712), RoundedCornerShape(6.dp))
+                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFEF4444).copy(alpha = recAlpha))
+                            )
+                            Text(
+                                text = String.format("REC %02d:%02d.%d", min, sec, ms),
+                                color = Color(0xFFFCA5A5),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else if (effectiveCollapsed) {
+                        // Compact preview when collapsed
                         Text(
-                            text = String.format("L: %.0fHz | R: %.0fHz", leftCarrierFreq, rightCarrierFreq),
-                            fontSize = 9.sp,
+                            text = if (isBinauralEnabled) {
+                                String.format("L:%.0f R:%.0f", leftCarrierFreq, rightCarrierFreq)
+                            } else {
+                                String.format("%.0fHz • Vpp:%.2fV", carrierFreq, vpp)
+                            },
+                            fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFA855F7)
-                        )
-                        Text(
-                            text = String.format("BEAT: %.1f Hz", abs(rightCarrierFreq - leftCarrierFreq)),
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF59E0B)
+                            color = traceColor
                         )
                     } else {
                         Text(
-                            text = String.format("CARRIER: %.1f Hz", carrierFreq),
-                            fontSize = 9.sp,
+                            text = if (isPlaying) "LIVE" else "STANDBY",
+                            fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            color = traceColor
+                            color = if (isPlaying) Color(0xFF10B981) else Color(0xFF64748B)
                         )
-                        Text(
-                            text = String.format("MOD: %.1f Hz", modFreq),
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color(0xFFF59E0B)
+                    }
+
+                    // Chevron Expand/Collapse icon
+                    IconButton(
+                        onClick = { toggleCollapse() },
+                        modifier = Modifier
+                            .size(24.dp)
+                            .testTag("collapse_oscilloscope_button")
+                    ) {
+                        Icon(
+                            imageVector = if (effectiveCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                            contentDescription = if (effectiveCollapsed) "Expand Oscilloscope" else "Collapse Oscilloscope",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Scope Controls (Timebase zoom & Amplitude scale)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = !effectiveCollapsed,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
-                // Horizontal Timebase buttons
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("TIME:", fontSize = 10.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
-                    listOf(1f to "1x", 2f to "2x", 4f to "4x", 8f to "8x").forEach { (zoom, label) ->
-                        FilterChip(
-                            selected = timebaseZoom == zoom,
-                            onClick = { timebaseZoom = zoom },
-                            label = { Text(label, fontSize = 10.sp) },
-                            modifier = Modifier.height(28.dp)
-                        )
-                    }
-                }
+                Column {
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                // Vertical Gain buttons
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("GAIN:", fontSize = 10.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
-                    listOf(0.5f to "0.5x", 1.0f to "1x", 1.5f to "1.5x").forEach { (gain, label) ->
-                        FilterChip(
-                            selected = amplitudeGain == gain,
-                            onClick = { amplitudeGain = gain },
-                            label = { Text(label, fontSize = 10.sp) },
-                            modifier = Modifier.height(28.dp)
-                        )
+                    // Main Scope Screen Canvas
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF030712))
+                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                            .clickable { isFrozen = !isFrozen }
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width
+                            val h = size.height
+                            val centerY = h / 2f
+
+                            // Draw Grid
+                            val numCols = 10
+                            val numRows = 8
+                            val colWidth = w / numCols
+                            val rowHeight = h / numRows
+
+                            // Subtle background lines
+                            for (c in 1 until numCols) {
+                                val x = c * colWidth
+                                drawLine(
+                                    color = if (c == numCols / 2) gridColor else gridSubColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, h),
+                                    strokeWidth = if (c == numCols / 2) 1.5f else 0.8f
+                                )
+                            }
+                            for (r in 1 until numRows) {
+                                val y = r * rowHeight
+                                drawLine(
+                                    color = if (r == numRows / 2) gridColor else gridSubColor,
+                                    start = Offset(0f, y),
+                                    end = Offset(w, y),
+                                    strokeWidth = if (r == numRows / 2) 1.5f else 0.8f
+                                )
+                            }
+
+                            // Center Crosshair ticks
+                            val centerTickSize = 4f
+                            for (c in 0..numCols * 5) {
+                                val x = c * (colWidth / 5)
+                                drawLine(
+                                    color = gridColor,
+                                    start = Offset(x, centerY - centerTickSize),
+                                    end = Offset(x, centerY + centerTickSize),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            val centerX = w / 2f
+                            for (r in 0..numRows * 5) {
+                                val y = r * (rowHeight / 5)
+                                drawLine(
+                                    color = gridColor,
+                                    start = Offset(centerX - centerTickSize, y),
+                                    end = Offset(centerX + centerTickSize, y),
+                                    strokeWidth = 1f
+                                )
+                            }
+
+                            // Render Waveform trace
+                            if (samples.isNotEmpty()) {
+                                // Find trigger zero-crossing (rising slope from <= 0 to > 0)
+                                var startIndex = 0
+                                if (triggerEnabled && !isFrozen) {
+                                    val maxSearch = (samples.size / 3).coerceAtLeast(1)
+                                    for (i in 1 until maxSearch) {
+                                        if (samples[i - 1] <= 0f && samples[i] > 0f) {
+                                            startIndex = i
+                                            break
+                                        }
+                                    }
+                                }
+
+                                // Determine points to draw based on timebase zoom
+                                val effectiveSamples = (samples.size / timebaseZoom).toInt().coerceIn(32, samples.size - startIndex)
+                                val stepX = w / (effectiveSamples - 1).toFloat()
+
+                                val path = Path()
+                                val glowPath = Path()
+
+                                for (i in 0 until effectiveSamples) {
+                                    val sampleIdx = startIndex + i
+                                    if (sampleIdx >= samples.size) break
+                                    val sampleVal = samples[sampleIdx] * amplitudeGain
+                                    val clampedSample = sampleVal.coerceIn(-1.5f, 1.5f)
+                                    // Map -1..1 to screen height with 0 at centerY
+                                    val y = centerY - (clampedSample * (h * 0.42f))
+                                    val x = i * stepX
+
+                                    if (i == 0) {
+                                        path.moveTo(x, y)
+                                        glowPath.moveTo(x, y)
+                                    } else {
+                                        path.lineTo(x, y)
+                                        glowPath.lineTo(x, y)
+                                    }
+                                }
+
+                                // Draw outer glow
+                                drawPath(
+                                    path = glowPath,
+                                    color = glowColor,
+                                    style = Stroke(width = 6f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                )
+                                // Draw core trace
+                                drawPath(
+                                    path = path,
+                                    color = traceColor,
+                                    style = Stroke(width = 2.2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                )
+                            }
+                        }
+
+                        // Overlay technical metrics at top-right of canvas
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .background(Color(0x99030712), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                text = String.format("Vpp: %.2f V", vpp),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = traceColor
+                            )
+                            Text(
+                                text = String.format("RMS: %.2f", rms),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF94A3B8)
+                            )
+                            Text(
+                                text = String.format("Zoom: %.1fx", timebaseZoom),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+
+                        // Overlay Frequency info at bottom-left of canvas
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(8.dp)
+                                .background(Color(0x99030712), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isBinauralEnabled) {
+                                Text(
+                                    text = String.format("L: %.0fHz | R: %.0fHz", leftCarrierFreq, rightCarrierFreq),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFA855F7)
+                                )
+                                Text(
+                                    text = String.format("BEAT: %.1f Hz", abs(rightCarrierFreq - leftCarrierFreq)),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B)
+                                )
+                            } else {
+                                Text(
+                                    text = String.format("CARRIER: %.1f Hz", carrierFreq),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = traceColor
+                                )
+                                Text(
+                                    text = String.format("MOD: %.1f Hz", modFreq),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFFF59E0B)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Quick Scope Controls (Timebase zoom & Amplitude scale)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Horizontal Timebase buttons
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("TIME:", fontSize = 10.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                            listOf(1f to "1x", 2f to "2x", 4f to "4x", 8f to "8x").forEach { (zoom, label) ->
+                                FilterChip(
+                                    selected = timebaseZoom == zoom,
+                                    onClick = { timebaseZoom = zoom },
+                                    label = { Text(label, fontSize = 10.sp) },
+                                    modifier = Modifier.height(28.dp)
+                                )
+                            }
+                        }
+
+                        // Vertical Gain buttons
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("GAIN:", fontSize = 10.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                            listOf(0.5f to "0.5x", 1.0f to "1x", 1.5f to "1.5x").forEach { (gain, label) ->
+                                FilterChip(
+                                    selected = amplitudeGain == gain,
+                                    onClick = { amplitudeGain = gain },
+                                    label = { Text(label, fontSize = 10.sp) },
+                                    modifier = Modifier.height(28.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
