@@ -43,7 +43,7 @@ interface RecordingDao {
     suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 3, exportSchema = false)
+@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun presetDao(): PresetDao
     abstract fun recordingDao(): RecordingDao
@@ -158,6 +158,37 @@ abstract class AppDatabase : RoomDatabase() {
                     isBinauralEnabled = true,
                     leftCarrierFreq = 412.0f,
                     rightCarrierFreq = 452.0f,
+                    isFactory = true
+                ),
+                PresetEntity(
+                    name = "Harmonic Chime 216Hz",
+                    description = "Additive overtone chime (216Hz carrier layered with 2x, 3x, and 4x sine harmonics)",
+                    carrierFreq = 216.0f,
+                    carrierWave = WaveformType.SINE.name,
+                    modFreq = 1.0f,
+                    modIntensity = 0.0f,
+                    modWave = WaveformType.SINE.name,
+                    modMode = ModulationMode.ISOCHRONIC_PULSE.name,
+                    isHarmonicsEnabled = true,
+                    h1Multiplier = 2,
+                    h1Volume = 0.5f,
+                    h2Multiplier = 3,
+                    h2Volume = 0.3f,
+                    h3Multiplier = 4,
+                    h3Volume = 0.15f,
+                    isFactory = true
+                ),
+                PresetEntity(
+                    name = "Delta Sleep & White Noise",
+                    description = "100Hz soothing carrier + 2.5Hz Delta modulation blended with a relaxing white noise floor for acoustic masking and sleep",
+                    carrierFreq = 100.0f,
+                    carrierWave = WaveformType.SINE.name,
+                    modFreq = 2.5f,
+                    modIntensity = 0.6f,
+                    modWave = WaveformType.SINE.name,
+                    modMode = ModulationMode.ISOCHRONIC_PULSE.name,
+                    isWhiteNoiseEnabled = true,
+                    whiteNoiseLevel = 0.18f,
                     isFactory = true
                 )
             )

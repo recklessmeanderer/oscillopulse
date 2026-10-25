@@ -33,6 +33,28 @@ class AudioEngine(private val filesDir: File) {
     @Volatile var rightCarrierFreq: Float = 472.0f
         set(value) { field = value.coerceIn(1.0f, 1000.0f) }
 
+    // Additive Harmonics (up to 3 sine wave overtones)
+    @Volatile var isHarmonicsEnabled: Boolean = false
+    @Volatile var h1Multiplier: Int = 2
+        set(value) { field = value.coerceIn(2, 16) }
+    @Volatile var h1Volume: Float = 0.0f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+
+    @Volatile var h2Multiplier: Int = 3
+        set(value) { field = value.coerceIn(2, 16) }
+    @Volatile var h2Volume: Float = 0.0f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+
+    @Volatile var h3Multiplier: Int = 4
+        set(value) { field = value.coerceIn(2, 16) }
+    @Volatile var h3Volume: Float = 0.0f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+
+    // White Noise Floor Generator
+    @Volatile var isWhiteNoiseEnabled: Boolean = false
+    @Volatile var whiteNoiseLevel: Float = 0.15f // 0.0f to 1.0f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+
     @Volatile var modFreq: Float = 40.0f
         set(value) { field = value.coerceIn(0.1f, 200.0f) }
 
@@ -256,12 +278,44 @@ class AudioEngine(private val filesDir: File) {
                 val phaseIncM = (twoPi * mFreq.toDouble()) / currentSampleRate
                 val cPhaseOffsetRad = Math.toRadians(carrierPhaseOffsetDeg.toDouble())
 
+                val harmEnabled = isHarmonicsEnabled
+                val h1M = h1Multiplier.toDouble()
+                val h1V = h1Volume
+                val h2M = h2Multiplier.toDouble()
+                val h2V = h2Volume
+                val h3M = h3Multiplier.toDouble()
+                val h3V = h3Volume
+                val normHarmonics = if (harmEnabled) 1.0f / max(1.0f, 1.0f + 0.5f * (h1V + h2V + h3V)) else 1.0f
+
+                val noiseEnabled = isWhiteNoiseEnabled
+                val noiseLvl = whiteNoiseLevel
+                val rng = java.util.Random()
+
                 var maxMagnitude = 0f
                 recByteBuffer.clear()
 
                 for (i in 0 until bufferSamples) {
-                    val rawCarrierL = cWave.calculate(carrierPhaseL + cPhaseOffsetRad)
-                    val rawCarrierR = cWave.calculate(carrierPhaseR + cPhaseOffsetRad)
+                    val baseCarrierL = cWave.calculate(carrierPhaseL + cPhaseOffsetRad)
+                    val baseCarrierR = cWave.calculate(carrierPhaseR + cPhaseOffsetRad)
+
+                    val rawCarrierL = if (harmEnabled) {
+                        val h1 = kotlin.math.sin(h1M * (carrierPhaseL + cPhaseOffsetRad)).toFloat() * h1V
+                        val h2 = kotlin.math.sin(h2M * (carrierPhaseL + cPhaseOffsetRad)).toFloat() * h2V
+                        val h3 = kotlin.math.sin(h3M * (carrierPhaseL + cPhaseOffsetRad)).toFloat() * h3V
+                        (baseCarrierL + h1 + h2 + h3) * normHarmonics
+                    } else {
+                        baseCarrierL
+                    }
+
+                    val rawCarrierR = if (harmEnabled) {
+                        val h1 = kotlin.math.sin(h1M * (carrierPhaseR + cPhaseOffsetRad)).toFloat() * h1V
+                        val h2 = kotlin.math.sin(h2M * (carrierPhaseR + cPhaseOffsetRad)).toFloat() * h2V
+                        val h3 = kotlin.math.sin(h3M * (carrierPhaseR + cPhaseOffsetRad)).toFloat() * h3V
+                        (baseCarrierR + h1 + h2 + h3) * normHarmonics
+                    } else {
+                        baseCarrierR
+                    }
+
                     val rawMod = mWave.calculate(modPhase)
 
                     val (envL, envR) = when {
@@ -278,8 +332,19 @@ class AudioEngine(private val filesDir: File) {
                         else -> Pair(1.0f, 1.0f)
                     }
 
-                    val sampleL = (rawCarrierL * envL * targetVol).coerceIn(-1.0f, 1.0f)
-                    val sampleR = (rawCarrierR * envR * targetVol).coerceIn(-1.0f, 1.0f)
+                    var sL = rawCarrierL * envL * targetVol
+                    var sR = rawCarrierR * envR * targetVol
+
+                    if (noiseEnabled && noiseLvl > 0f) {
+                        // Stereo decorrelated white noise floor
+                        val nL = (rng.nextFloat() * 2f - 1f) * noiseLvl * targetVol
+                        val nR = (rng.nextFloat() * 2f - 1f) * noiseLvl * targetVol
+                        sL += nL
+                        sR += nR
+                    }
+
+                    val sampleL = sL.coerceIn(-1.0f, 1.0f)
+                    val sampleR = sR.coerceIn(-1.0f, 1.0f)
 
                     // Average mono sample for oscilloscope visualization
                     val monoScopeSample = (sampleL + sampleR) * 0.5f

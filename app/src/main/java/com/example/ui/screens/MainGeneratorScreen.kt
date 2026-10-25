@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.view.KeyEvent
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.model.AppCardModule
 import com.example.model.ScopeTheme
 import com.example.model.WaveformType
 import com.example.ui.MainViewModel
@@ -43,6 +45,15 @@ fun MainGeneratorScreen(
     val isBinauralEnabled by viewModel.isBinauralEnabled.collectAsStateWithLifecycle()
     val leftCarrierFreq by viewModel.leftCarrierFreq.collectAsStateWithLifecycle()
     val rightCarrierFreq by viewModel.rightCarrierFreq.collectAsStateWithLifecycle()
+    val isHarmonicsEnabled by viewModel.isHarmonicsEnabled.collectAsStateWithLifecycle()
+    val h1Multiplier by viewModel.h1Multiplier.collectAsStateWithLifecycle()
+    val h1Volume by viewModel.h1Volume.collectAsStateWithLifecycle()
+    val h2Multiplier by viewModel.h2Multiplier.collectAsStateWithLifecycle()
+    val h2Volume by viewModel.h2Volume.collectAsStateWithLifecycle()
+    val h3Multiplier by viewModel.h3Multiplier.collectAsStateWithLifecycle()
+    val h3Volume by viewModel.h3Volume.collectAsStateWithLifecycle()
+    val isWhiteNoiseEnabled by viewModel.isWhiteNoiseEnabled.collectAsStateWithLifecycle()
+    val whiteNoiseLevel by viewModel.whiteNoiseLevel.collectAsStateWithLifecycle()
     val modFreq by viewModel.modFreq.collectAsStateWithLifecycle()
     val modIntensity by viewModel.modIntensity.collectAsStateWithLifecycle()
     val modWave by viewModel.modWave.collectAsStateWithLifecycle()
@@ -66,6 +77,9 @@ fun MainGeneratorScreen(
     val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
     val userFeedback by viewModel.userFeedbackMessage.collectAsStateWithLifecycle()
 
+    val cardOrder by viewModel.cardOrder.collectAsStateWithLifecycle()
+    val isReorderMode by viewModel.isReorderMode.collectAsStateWithLifecycle()
+
     // Dialog & Sheet States
     var showShortcutsDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -73,6 +87,7 @@ fun MainGeneratorScreen(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showPresetsSheet by remember { mutableStateOf(false) }
     var showRecordingsSheet by remember { mutableStateOf(false) }
+    var showReorderSheet by remember { mutableStateOf(false) }
     var isScopeCollapsed by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -161,6 +176,18 @@ fun MainGeneratorScreen(
                             viewModel.toggleBinauralBeat()
                             true
                         }
+                        KeyEvent.KEYCODE_H -> {
+                            viewModel.toggleHarmonics()
+                            true
+                        }
+                        KeyEvent.KEYCODE_N -> {
+                            viewModel.toggleWhiteNoise()
+                            true
+                        }
+                        KeyEvent.KEYCODE_L -> {
+                            viewModel.toggleReorderMode()
+                            true
+                        }
                         KeyEvent.KEYCODE_E -> {
                             showExportDialog = true
                             true
@@ -220,6 +247,18 @@ fun MainGeneratorScreen(
                     }
                 },
                 actions = {
+                    // Customize Card Layout Mode Button
+                    IconButton(
+                        onClick = { viewModel.toggleReorderMode() },
+                        modifier = Modifier.testTag("customize_layout_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isReorderMode) Icons.Default.Done else Icons.Default.DashboardCustomize,
+                            contentDescription = if (isReorderMode) "Done Reordering" else "Reorder Cards Layout",
+                            tint = if (isReorderMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Keyboard Shortcuts Button
                     IconButton(
                         onClick = { showShortcutsDialog = true },
@@ -346,6 +385,30 @@ fun MainGeneratorScreen(
                 }
 
                 item {
+                    FilterChip(
+                        selected = isWhiteNoiseEnabled,
+                        onClick = { viewModel.toggleWhiteNoise() },
+                        label = {
+                            Text(
+                                text = if (isWhiteNoiseEnabled) "Noise: ${(whiteNoiseLevel * 100).toInt()}%" else "+ White Noise",
+                                fontSize = 11.sp,
+                                fontWeight = if (isWhiteNoiseEnabled) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Grain,
+                                contentDescription = "White Noise",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("quick_white_noise_chip")
+                    )
+                }
+
+                item {
                     AssistChip(
                         onClick = { showPresetsSheet = true },
                         label = { Text("All Presets (${allPresets.size})", fontSize = 11.sp) },
@@ -359,70 +422,189 @@ fun MainGeneratorScreen(
                         modifier = Modifier.height(32.dp)
                     )
                 }
+
+                item {
+                    AssistChip(
+                        onClick = { showReorderSheet = true },
+                        label = { Text("Reorder Cards", fontSize = 11.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = "Reorder Modules",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("quick_reorder_chip")
+                    )
+                }
             }
 
-            // Real-Time Oscilloscope View
-            OscilloscopeCanvas(
-                samples = scopeSamples,
-                isPlaying = isPlaying,
-                isRecording = isRecording,
-                recordingDurationMs = recordingDurationMs,
-                carrierFreq = carrierFreq,
-                modFreq = modFreq,
-                scopeTheme = scopeTheme,
-                isBinauralEnabled = isBinauralEnabled,
-                leftCarrierFreq = leftCarrierFreq,
-                rightCarrierFreq = rightCarrierFreq,
-                isCollapsed = isScopeCollapsed,
-                onToggleCollapse = { isScopeCollapsed = !isScopeCollapsed }
-            )
+            // Reorder Mode Active Banner
+            AnimatedVisibility(
+                visible = isReorderMode,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                        width = 1.dp
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("reorder_mode_banner")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Card Layout Mode: Use up/down arrows or open reorder sheet",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
 
-            // Master Transport Controls (Play, Record, Volume, VU Level Meter)
-            TransportBar(
-                isPlaying = isPlaying,
-                isRecording = isRecording,
-                isMuted = isMuted,
-                volume = volume,
-                peakLevel = peakLevel,
-                onTogglePlay = { viewModel.togglePlayback() },
-                onToggleRecord = { viewModel.toggleRecording() },
-                onToggleMute = { viewModel.toggleMute() },
-                onVolumeChange = { viewModel.setVolume(it) },
-                onOpenExport = { showExportDialog = true }
-            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(
+                                onClick = { showReorderSheet = true },
+                                modifier = Modifier.testTag("banner_reorder_sheet_button")
+                            ) {
+                                Text("Sheet", fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = { viewModel.setReorderMode(false) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp).testTag("banner_done_button")
+                            ) {
+                                Text("Done", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
 
-            // Carrier Frequency Section (1 Hz to 1000 Hz + Waveforms + Phase Shift)
-            CarrierFrequencySection(
-                frequency = carrierFreq,
-                waveform = carrierWave,
-                phaseOffset = carrierPhaseOffset,
-                onFrequencyChange = { viewModel.setCarrierFreq(it) },
-                onWaveformChange = { viewModel.setCarrierWave(it) },
-                onPhaseOffsetChange = { viewModel.setCarrierPhaseOffset(it) }
-            )
-
-            // Binaural Beat Generation Section (Independent Left & Right carriers)
-            BinauralBeatSection(
-                isBinauralEnabled = isBinauralEnabled,
-                leftCarrierFreq = leftCarrierFreq,
-                rightCarrierFreq = rightCarrierFreq,
-                onToggleBinaural = { viewModel.setBinauralEnabled(it) },
-                onLeftFreqChange = { viewModel.setLeftCarrierFreq(it) },
-                onRightFreqChange = { viewModel.setRightCarrierFreq(it) },
-                onSetBeatDiff = { viewModel.setBinauralBeatDiff(it) }
-            )
-
-            // Modulation & Entrainment Section
-            ModulationSection(
-                frequency = modFreq,
-                intensity = modIntensity,
-                waveform = modWave,
-                mode = modMode,
-                onFrequencyChange = { viewModel.setModFreq(it) },
-                onIntensityChange = { viewModel.setModIntensity(it) },
-                onWaveformChange = { viewModel.setModWave(it) },
-                onModeChange = { viewModel.setModMode(it) }
-            )
+            // Movable & Reorderable Cards
+            cardOrder.forEachIndexed { index, module ->
+                key(module.id) {
+                    ReorderableCardWrapper(
+                        module = module,
+                        index = index,
+                        totalCount = cardOrder.size,
+                        isReorderMode = isReorderMode,
+                        onMoveUp = { viewModel.moveCardUp(module) },
+                        onMoveDown = { viewModel.moveCardDown(module) },
+                        onOpenReorderSheet = { showReorderSheet = true }
+                    ) {
+                        when (module) {
+                            AppCardModule.OSCILLOSCOPE -> {
+                                OscilloscopeCanvas(
+                                    samples = scopeSamples,
+                                    isPlaying = isPlaying,
+                                    isRecording = isRecording,
+                                    recordingDurationMs = recordingDurationMs,
+                                    carrierFreq = carrierFreq,
+                                    modFreq = modFreq,
+                                    scopeTheme = scopeTheme,
+                                    isBinauralEnabled = isBinauralEnabled,
+                                    leftCarrierFreq = leftCarrierFreq,
+                                    rightCarrierFreq = rightCarrierFreq,
+                                    isCollapsed = isScopeCollapsed,
+                                    onToggleCollapse = { isScopeCollapsed = !isScopeCollapsed }
+                                )
+                            }
+                            AppCardModule.TRANSPORT -> {
+                                TransportBar(
+                                    isPlaying = isPlaying,
+                                    isRecording = isRecording,
+                                    isMuted = isMuted,
+                                    volume = volume,
+                                    peakLevel = peakLevel,
+                                    onTogglePlay = { viewModel.togglePlayback() },
+                                    onToggleRecord = { viewModel.toggleRecording() },
+                                    onToggleMute = { viewModel.toggleMute() },
+                                    onVolumeChange = { viewModel.setVolume(it) },
+                                    onOpenExport = { showExportDialog = true }
+                                )
+                            }
+                            AppCardModule.CARRIER -> {
+                                CarrierFrequencySection(
+                                    frequency = carrierFreq,
+                                    waveform = carrierWave,
+                                    phaseOffset = carrierPhaseOffset,
+                                    onFrequencyChange = { viewModel.setCarrierFreq(it) },
+                                    onWaveformChange = { viewModel.setCarrierWave(it) },
+                                    onPhaseOffsetChange = { viewModel.setCarrierPhaseOffset(it) }
+                                )
+                            }
+                            AppCardModule.BINAURAL -> {
+                                BinauralBeatSection(
+                                    isBinauralEnabled = isBinauralEnabled,
+                                    leftCarrierFreq = leftCarrierFreq,
+                                    rightCarrierFreq = rightCarrierFreq,
+                                    onToggleBinaural = { viewModel.setBinauralEnabled(it) },
+                                    onLeftFreqChange = { viewModel.setLeftCarrierFreq(it) },
+                                    onRightFreqChange = { viewModel.setRightCarrierFreq(it) },
+                                    onSetBeatDiff = { viewModel.setBinauralBeatDiff(it) }
+                                )
+                            }
+                            AppCardModule.HARMONICS -> {
+                                AdditiveHarmonicsSection(
+                                    isHarmonicsEnabled = isHarmonicsEnabled,
+                                    carrierFreq = carrierFreq,
+                                    h1Multiplier = h1Multiplier,
+                                    h1Volume = h1Volume,
+                                    h2Multiplier = h2Multiplier,
+                                    h2Volume = h2Volume,
+                                    h3Multiplier = h3Multiplier,
+                                    h3Volume = h3Volume,
+                                    onToggleHarmonics = { viewModel.setHarmonicsEnabled(it) },
+                                    onH1MultiplierChange = { viewModel.setHarmonicMultiplier(1, it) },
+                                    onH1VolumeChange = { viewModel.setHarmonicVolume(1, it) },
+                                    onH2MultiplierChange = { viewModel.setHarmonicMultiplier(2, it) },
+                                    onH2VolumeChange = { viewModel.setHarmonicVolume(2, it) },
+                                    onH3MultiplierChange = { viewModel.setHarmonicMultiplier(3, it) },
+                                    onH3VolumeChange = { viewModel.setHarmonicVolume(3, it) },
+                                    onSelectProfile = { h1M, h1V, h2M, h2V, h3M, h3V ->
+                                        viewModel.setHarmonicProfile(h1M, h1V, h2M, h2V, h3M, h3V)
+                                    }
+                                )
+                            }
+                            AppCardModule.MODULATION -> {
+                                ModulationSection(
+                                    frequency = modFreq,
+                                    intensity = modIntensity,
+                                    waveform = modWave,
+                                    mode = modMode,
+                                    onFrequencyChange = { viewModel.setModFreq(it) },
+                                    onIntensityChange = { viewModel.setModIntensity(it) },
+                                    onWaveformChange = { viewModel.setModWave(it) },
+                                    onModeChange = { viewModel.setModMode(it) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -470,10 +652,14 @@ fun MainGeneratorScreen(
             scopeTheme = scopeTheme,
             sampleRate = sampleRate,
             bitDepth = bitDepth,
+            isWhiteNoiseEnabled = isWhiteNoiseEnabled,
+            whiteNoiseLevel = whiteNoiseLevel,
             onToggleDarkMode = { viewModel.toggleDarkMode(it) },
             onSelectScopeTheme = { viewModel.setScopeTheme(it) },
             onSelectSampleRate = { viewModel.setSampleRate(it) },
             onSelectBitDepth = { viewModel.setBitDepth(it) },
+            onToggleWhiteNoise = { viewModel.setWhiteNoiseEnabled(it) },
+            onWhiteNoiseLevelChange = { viewModel.setWhiteNoiseLevel(it) },
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -492,6 +678,16 @@ fun MainGeneratorScreen(
             recordings = allRecordings,
             onDeleteRecording = { viewModel.deleteRecording(it) },
             onDismiss = { showRecordingsSheet = false }
+        )
+    }
+
+    if (showReorderSheet) {
+        ReorderModulesSheet(
+            cardOrder = cardOrder,
+            onMoveUp = { viewModel.moveCardUp(it) },
+            onMoveDown = { viewModel.moveCardDown(it) },
+            onResetOrder = { viewModel.resetCardOrder() },
+            onDismiss = { showReorderSheet = false }
         )
     }
 }

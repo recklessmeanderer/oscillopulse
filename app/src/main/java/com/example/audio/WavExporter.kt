@@ -25,6 +25,15 @@ object WavExporter {
         isBinauralEnabled: Boolean = false,
         leftCarrierFreq: Float = 432f,
         rightCarrierFreq: Float = 472f,
+        isHarmonicsEnabled: Boolean = false,
+        h1Multiplier: Int = 2,
+        h1Volume: Float = 0.0f,
+        h2Multiplier: Int = 3,
+        h2Volume: Float = 0.0f,
+        h3Multiplier: Int = 4,
+        h3Volume: Float = 0.0f,
+        isWhiteNoiseEnabled: Boolean = false,
+        whiteNoiseLevel: Float = 0.15f,
         durationSeconds: Float,
         sampleRate: Int,
         bitDepth: Int,
@@ -57,6 +66,12 @@ object WavExporter {
         val phaseIncM = (twoPi * modFreq.toDouble()) / sampleRate
         val phaseOffsetRad = Math.toRadians(carrierPhaseOffsetDeg.toDouble())
 
+        val h1M = h1Multiplier.toDouble()
+        val h2M = h2Multiplier.toDouble()
+        val h3M = h3Multiplier.toDouble()
+        val normHarmonics = if (isHarmonicsEnabled) 1.0f / kotlin.math.max(1.0f, 1.0f + 0.5f * (h1Volume + h2Volume + h3Volume)) else 1.0f
+        val rng = java.util.Random()
+
         FileOutputStream(outputFile).use { fos ->
             // Write placeholder 44-byte WAV header
             val header = createWavHeader(
@@ -76,14 +91,43 @@ object WavExporter {
                 byteBuffer.clear()
 
                 for (i in 0 until chunkSize) {
-                    val rawCarrierL = carrierWave.calculate(carrierPhaseL + phaseOffsetRad)
-                    val rawCarrierR = carrierWave.calculate(carrierPhaseR + phaseOffsetRad)
+                    val baseL = carrierWave.calculate(carrierPhaseL + phaseOffsetRad)
+                    val baseR = carrierWave.calculate(carrierPhaseR + phaseOffsetRad)
+
+                    val rawCarrierL = if (isHarmonicsEnabled) {
+                        val h1 = kotlin.math.sin(h1M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h1Volume
+                        val h2 = kotlin.math.sin(h2M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h2Volume
+                        val h3 = kotlin.math.sin(h3M * (carrierPhaseL + phaseOffsetRad)).toFloat() * h3Volume
+                        (baseL + h1 + h2 + h3) * normHarmonics
+                    } else {
+                        baseL
+                    }
+
+                    val rawCarrierR = if (isHarmonicsEnabled) {
+                        val h1 = kotlin.math.sin(h1M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h1Volume
+                        val h2 = kotlin.math.sin(h2M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h2Volume
+                        val h3 = kotlin.math.sin(h3M * (carrierPhaseR + phaseOffsetRad)).toFloat() * h3Volume
+                        (baseR + h1 + h2 + h3) * normHarmonics
+                    } else {
+                        baseR
+                    }
+
                     val rawMod = modWave.calculate(modPhase)
 
                     val (envL, envR) = if (isBinauralEnabled) Pair(1.0f, 1.0f) else calculateEnvelope(rawMod, modIntensity, modMode)
 
-                    val sampleL = (rawCarrierL * envL * volume).coerceIn(-1.0f, 1.0f)
-                    val sampleR = (rawCarrierR * envR * volume).coerceIn(-1.0f, 1.0f)
+                    var sL = rawCarrierL * envL * volume
+                    var sR = rawCarrierR * envR * volume
+
+                    if (isWhiteNoiseEnabled && whiteNoiseLevel > 0f) {
+                        val nL = (rng.nextFloat() * 2f - 1f) * whiteNoiseLevel * volume
+                        val nR = (rng.nextFloat() * 2f - 1f) * whiteNoiseLevel * volume
+                        sL += nL
+                        sR += nR
+                    }
+
+                    val sampleL = sL.coerceIn(-1.0f, 1.0f)
+                    val sampleR = sR.coerceIn(-1.0f, 1.0f)
 
                     writeSample(byteBuffer, sampleL, bitDepth)
                     writeSample(byteBuffer, sampleR, bitDepth)
