@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>40 Hz Gamma Entrainment Generator</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: var(--card);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 0 50px var(--accent-glow);
+            width: 100%;
+            max-width: 480px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+            color: var(--accent);
+        }
+        p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+        .pulse-visualizer {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+            margin: 0 auto 2rem auto;
+            opacity: 0.2;
+            transition: transform 0.05s ease, opacity 0.05s ease;
+        }
+        .active-pulse {
+            opacity: 1;
+            transform: scale(1.15);
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            text-align: left;
+            margin-bottom: 2rem;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+        .btn {
+            background-color: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border-radius: 9999px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px 0 var(--accent-glow);
+        }
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .btn.playing {
+            background-color: #ef4444;
+            box-shadow: 0 4px 14px 0 rgba(239, 68, 68, 0.4);
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>40 Hz Gamma Entrainment</h1>
+        <p>Continuous mathematical Web Audio oscillator &bull; Zero stalls or drops</p>
+
+        <div id="visualizer" class="pulse-visualizer"></div>
+
+        <div class="controls">
+            <div class="control-group">
+                <div class="label-row">
+                    <span>Carrier Frequency</span>
+                    <span id="carrierVal">432 Hz</span>
+                </div>
+                <input type="range" id="carrierSlider" min="100" max="800" value="432" step="1">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>Modulation Frequency</span>
+                    <span id="modVal">40 Hz (Gamma)</span>
+                </div>
+                <input type="range" id="modSlider" min="1" max="100" value="40" step="1">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>Volume</span>
+                    <span id="volVal">30%</span>
+                </div>
+                <input type="range" id="volSlider" min="0" max="100" value="30" step="1">
+            </div>
+        </div>
+
+        <button id="playBtn" class="btn">Start Continuous Playback</button>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let carrierOsc = null;
+        let modOsc = null;
+        let gainNode = null;
+        let isPlaying = false;
+        let pulseTimer = null;
+
+        const playBtn = document.getElementById('playBtn');
+        const visualizer = document.getElementById('visualizer');
+        const carrierSlider = document.getElementById('carrierSlider');
+        const carrierVal = document.getElementById('carrierVal');
+        const modSlider = document.getElementById('modSlider');
+        const modVal = document.getElementById('modVal');
+        const volSlider = document.getElementById('volSlider');
+        const volVal = document.getElementById('volVal');
+
+        carrierSlider.addEventListener('input', (e) => {
+            carrierVal.textContent = `${e.target.value} Hz`;
+            if (carrierOsc) carrierOsc.frequency.setValueAtTime(parseFloat(e.target.value), audioCtx.currentTime);
+        });
+
+        modSlider.addEventListener('input', (e) => {
+            modVal.textContent = `${e.target.value} Hz`;
+            if (modOsc) modOsc.frequency.setValueAtTime(parseFloat(e.target.value), audioCtx.currentTime);
+        });
+
+        volSlider.addEventListener('input', (e) => {
+            volVal.textContent = `${e.target.value}%`;
+            if (gainNode) gainNode.gain.setValueAtTime((parseFloat(e.target.value) / 100) * 0.5, audioCtx.currentTime);
+        });
+
+        playBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                startAudio();
+            } else {
+                stopAudio();
+            }
+        });
+
+        function startAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            const carrierFreq = parseFloat(carrierSlider.value);
+            const modFreq = parseFloat(modSlider.value);
+            const targetVolume = (parseFloat(volSlider.value) / 100) * 0.5;
+
+            carrierOsc = audioCtx.createOscillator();
+            carrierOsc.type = 'sine';
+            carrierOsc.frequency.setValueAtTime(carrierFreq, audioCtx.currentTime);
+
+            modOsc = audioCtx.createOscillator();
+            modOsc.type = 'square';
+            modOsc.frequency.setValueAtTime(modFreq, audioCtx.currentTime);
+
+            gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(targetVolume, audioCtx.currentTime);
+
+            const modGain = audioCtx.createGain();
+            modGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+
+            const dcOffset = audioCtx.createConstantSource ? audioCtx.createConstantSource() : null;
+            
+            const pulseGain = audioCtx.createGain();
+            pulseGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+            if (audioCtx.createConstantSource) {
+                const constSource = audioCtx.createConstantSource();
+                constSource.offset.setValueAtTime(0.5, audioCtx.currentTime);
+                modOsc.connect(modGain);
+                constSource.connect(pulseGain.gain);
+                modGain.connect(pulseGain.gain);
+                constSource.start();
+            } else {
+                modOsc.connect(pulseGain.gain);
+            }
+
+            carrierOsc.connect(pulseGain);
+            pulseGain.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            carrierOsc.start();
+            modOsc.start();
+
+            isPlaying = true;
+            playBtn.textContent = 'Stop Playback';
+            playBtn.classList.add('playing');
+            visualizer.classList.add('active-pulse');
+        }
+
+        function stopAudio() {
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+            isPlaying = false;
+            playBtn.textContent = 'Start Continuous Playback';
+            playBtn.classList.remove('playing');
+            visualizer.classList.remove('active-pulse');
+        }
+    </script>
+</body>
+</html>

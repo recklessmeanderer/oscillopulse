@@ -1,0 +1,6 @@
+{
+  "name": "OscilloPulse",
+  "description": "Precision carrier & entrainment wave generator with real-time oscilloscope, WAV export, and audio presets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

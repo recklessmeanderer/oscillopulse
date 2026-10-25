@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">OscilloPulse</string>
+    <string name="title_oscilloscope">Oscilloscope</string>
+    <string name="title_generator">Carrier &amp; Entrainment</string>
+    <string name="title_presets">Presets</string>
+    <string name="title_recordings">Recordings</string>
+    <string name="carrier_frequency">Carrier Frequency</string>
+    <string name="modulation_frequency">Modulation Frequency</string>
+    <string name="modulation_depth">Modulation Intensity</string>
+    <string name="waveform_sine">Sine</string>
+    <string name="waveform_square">Square</string>
+    <string name="waveform_sawtooth">Sawtooth</string>
+    <string name="waveform_triangle">Triangle</string>
+    <string name="play">Play</string>
+    <string name="stop">Stop</string>
+    <string name="record">Record</string>
+    <string name="export_wav">Export WAV</string>
+    <string name="sample_rate">Sample Rate</string>
+    <string name="bit_depth">Bit Depth</string>
+</resources>
