@@ -12,9 +12,16 @@ import com.example.data.RecordingEntity
 import android.content.Context
 import com.example.model.AppCardModule
 import com.example.model.AudioConfig
+import com.example.model.ChordPreset
+import com.example.model.HarmonicInterval
 import com.example.model.ModulationMode
+import com.example.model.NoiseColor
 import com.example.model.ScopeTheme
 import com.example.model.WaveformType
+import android.graphics.Bitmap
+import android.net.Uri
+import com.example.audio.ImageSonificationHelper
+import com.example.audio.TexturePreset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -71,12 +78,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isFrequenciesLinked = MutableStateFlow(true)
     val isFrequenciesLinked = _isFrequenciesLinked.asStateFlow()
 
-    // White Noise Floor states
+    // Noise Floor states (White, Pink, Brown)
     private val _isWhiteNoiseEnabled = MutableStateFlow(false)
     val isWhiteNoiseEnabled = _isWhiteNoiseEnabled.asStateFlow()
 
     private val _whiteNoiseLevel = MutableStateFlow(0.15f)
     val whiteNoiseLevel = _whiteNoiseLevel.asStateFlow()
+
+    private val _noiseColor = MutableStateFlow(NoiseColor.WHITE)
+    val noiseColor = _noiseColor.asStateFlow()
+
+    // Optical Image Sonification & Oscilloscope Wallpaper
+    val opticalScanProgress = audioEngine.opticalScanProgress
+
+    private val _scopeBackgroundImage = MutableStateFlow<Bitmap?>(null)
+    val scopeBackgroundImage = _scopeBackgroundImage.asStateFlow()
+
+    private val _scopeBackgroundOpacity = MutableStateFlow(0.35f)
+    val scopeBackgroundOpacity = _scopeBackgroundOpacity.asStateFlow()
+
+    private val _isImageNoiseActive = MutableStateFlow(false)
+    val isImageNoiseActive = _isImageNoiseActive.asStateFlow()
+
+    private val _imageNoiseDepth = MutableStateFlow(0.65f)
+    val imageNoiseDepth = _imageNoiseDepth.asStateFlow()
+
+    private val _imageScanSpeedHz = MutableStateFlow(1.0f)
+    val imageScanSpeedHz = _imageScanSpeedHz.asStateFlow()
+
+    private val _selectedImageName = MutableStateFlow<String?>("Cosmic Nebula")
+    val selectedImageName = _selectedImageName.asStateFlow()
+
+    private val _imageAnalysisInfo = MutableStateFlow<String?>(null)
+    val imageAnalysisInfo = _imageAnalysisInfo.asStateFlow()
+
+    // Audio Focus Ducking
+    private val _isDuckingEnabled = MutableStateFlow(true)
+    val isDuckingEnabled = _isDuckingEnabled.asStateFlow()
+
+    // Multi-Tone Layering & Harmonic Chords
+    private val _isLayeringEnabled = MutableStateFlow(false)
+    val isLayeringEnabled = _isLayeringEnabled.asStateFlow()
+
+    private val _activeChordPreset = MutableStateFlow(ChordPreset.OFF)
+    val activeChordPreset = _activeChordPreset.asStateFlow()
+
+    private val _layer2Enabled = MutableStateFlow(true)
+    val layer2Enabled = _layer2Enabled.asStateFlow()
+
+    private val _layer2Freq = MutableStateFlow(648.0f)
+    val layer2Freq = _layer2Freq.asStateFlow()
+
+    private val _layer2Wave = MutableStateFlow(WaveformType.SINE)
+    val layer2Wave = _layer2Wave.asStateFlow()
+
+    private val _layer2Gain = MutableStateFlow(0.45f)
+    val layer2Gain = _layer2Gain.asStateFlow()
+
+    private val _layer2Interval = MutableStateFlow(HarmonicInterval.PERFECT_FIFTH)
+    val layer2Interval = _layer2Interval.asStateFlow()
+
+    private val _layer3Enabled = MutableStateFlow(true)
+    val layer3Enabled = _layer3Enabled.asStateFlow()
+
+    private val _layer3Freq = MutableStateFlow(864.0f)
+    val layer3Freq = _layer3Freq.asStateFlow()
+
+    private val _layer3Wave = MutableStateFlow(WaveformType.SINE)
+    val layer3Wave = _layer3Wave.asStateFlow()
+
+    private val _layer3Gain = MutableStateFlow(0.35f)
+    val layer3Gain = _layer3Gain.asStateFlow()
+
+    private val _layer3Interval = MutableStateFlow(HarmonicInterval.OCTAVE_UP)
+    val layer3Interval = _layer3Interval.asStateFlow()
 
     private val _modFreq = MutableStateFlow(40.0f)
     val modFreq = _modFreq.asStateFlow()
@@ -159,6 +234,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // Preload default procedural cosmic texture for instant out-of-the-box visual & audio richness
+        viewModelScope.launch(Dispatchers.Default) {
+            val defaultTexture = ImageSonificationHelper.generatePresetTexture(TexturePreset.COSMIC_NEBULA)
+            applyAnalyzedImage(defaultTexture, TexturePreset.COSMIC_NEBULA.title)
+        }
     }
 
     private fun updateAudioEngineParams() {
@@ -173,6 +254,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.modMode = _modMode.value
         audioEngine.isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value
         audioEngine.whiteNoiseLevel = _whiteNoiseLevel.value
+        audioEngine.noiseColor = _noiseColor.value
+        audioEngine.isImageNoiseEnabled = _isImageNoiseActive.value
+        audioEngine.imageNoiseDepth = _imageNoiseDepth.value
+        audioEngine.imageScanSpeedHz = _imageScanSpeedHz.value
+        audioEngine.isDuckingEnabled = _isDuckingEnabled.value
+        audioEngine.isLayeringEnabled = _isLayeringEnabled.value
+        audioEngine.activeChordPreset = _activeChordPreset.value
+        audioEngine.layer2Enabled = _layer2Enabled.value
+        audioEngine.layer2Freq = _layer2Freq.value
+        audioEngine.layer2Wave = _layer2Wave.value
+        audioEngine.layer2Gain = _layer2Gain.value
+        audioEngine.layer2Interval = _layer2Interval.value
+        audioEngine.layer3Enabled = _layer3Enabled.value
+        audioEngine.layer3Freq = _layer3Freq.value
+        audioEngine.layer3Wave = _layer3Wave.value
+        audioEngine.layer3Gain = _layer3Gain.value
+        audioEngine.layer3Interval = _layer3Interval.value
         audioEngine.volume = _volume.value
         audioEngine.isMuted = _isMuted.value
         audioEngine.sampleRate = _sampleRate.value
@@ -206,6 +304,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else if (!_isBinauralEnabled.value) {
             _leftCarrierFreq.value = clamped
             audioEngine.leftCarrierFreq = clamped
+        }
+
+        // Harmonically scale chord layer frequencies if locked to intervals
+        if (_isLayeringEnabled.value) {
+            if (_layer2Interval.value != HarmonicInterval.CUSTOM) {
+                val newL2 = (clamped * _layer2Interval.value.ratio).coerceIn(1.0f, 1000.0f)
+                _layer2Freq.value = newL2
+                audioEngine.layer2Freq = newL2
+            }
+            if (_layer3Interval.value != HarmonicInterval.CUSTOM) {
+                val newL3 = (clamped * _layer3Interval.value.ratio).coerceIn(1.0f, 1000.0f)
+                _layer3Freq.value = newL3
+                audioEngine.layer3Freq = newL3
+            }
         }
     }
 
@@ -292,6 +404,188 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = level.coerceIn(0.0f, 1.0f)
         _whiteNoiseLevel.value = clamped
         audioEngine.whiteNoiseLevel = clamped
+    }
+
+    fun setNoiseColor(color: NoiseColor) {
+        _noiseColor.value = color
+        audioEngine.noiseColor = color
+        _userFeedbackMessage.value = "Noise color set to ${color.displayName}"
+    }
+
+    fun setDuckingEnabled(enabled: Boolean) {
+        _isDuckingEnabled.value = enabled
+        audioEngine.isDuckingEnabled = enabled
+        _userFeedbackMessage.value = if (enabled) "Auto audio ducking enabled" else "Audio ducking disabled"
+    }
+
+    // Optical Image Sonification & Scope Wallpaper Controls
+    fun loadScopeImageUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmap = ImageSonificationHelper.loadBitmapFromUri(getApplication(), uri)
+            if (bitmap != null) {
+                applyAnalyzedImage(bitmap, "Custom Photo")
+                _userFeedbackMessage.value = "Image wallpaper loaded & sonified"
+            } else {
+                _userFeedbackMessage.value = "Could not decode selected image"
+            }
+        }
+    }
+
+    fun loadPresetTexture(preset: TexturePreset) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val bitmap = ImageSonificationHelper.generatePresetTexture(preset)
+            applyAnalyzedImage(bitmap, preset.title)
+            setNoiseColor(preset.noiseColor)
+            if (!_isWhiteNoiseEnabled.value) {
+                setWhiteNoiseEnabled(true)
+            }
+            _userFeedbackMessage.value = "${preset.title} texture loaded (${preset.noiseColor.displayName} noise)"
+        }
+    }
+
+    private fun applyAnalyzedImage(bitmap: Bitmap, title: String) {
+        val analysis = ImageSonificationHelper.extractAudioProfile(bitmap)
+        _scopeBackgroundImage.value = bitmap
+        _selectedImageName.value = title
+        _imageAnalysisInfo.value = String.format("Lum: %.0f • Match: %s", analysis.avgLuminance, analysis.recommendedNoiseColor.displayName)
+        _isImageNoiseActive.value = true
+
+        audioEngine.imageAudioProfile = analysis.audioProfile
+        audioEngine.isImageNoiseEnabled = true
+        audioEngine.imageNoiseDepth = _imageNoiseDepth.value
+        audioEngine.imageScanSpeedHz = _imageScanSpeedHz.value
+    }
+
+    fun clearScopeImage() {
+        _scopeBackgroundImage.value = null
+        _selectedImageName.value = null
+        _imageAnalysisInfo.value = null
+        _isImageNoiseActive.value = false
+        audioEngine.isImageNoiseEnabled = false
+        audioEngine.imageAudioProfile = null
+        _userFeedbackMessage.value = "Scope wallpaper removed"
+    }
+
+    fun setScopeBackgroundOpacity(opacity: Float) {
+        _scopeBackgroundOpacity.value = opacity.coerceIn(0.05f, 0.95f)
+    }
+
+    fun setImageNoiseActive(enabled: Boolean) {
+        _isImageNoiseActive.value = enabled
+        audioEngine.isImageNoiseEnabled = enabled
+        if (enabled && !_isWhiteNoiseEnabled.value) {
+            setWhiteNoiseEnabled(true)
+        }
+        _userFeedbackMessage.value = if (enabled) "Optical noise modulation enabled" else "Optical noise disabled"
+    }
+
+    fun toggleImageNoise() {
+        setImageNoiseActive(!_isImageNoiseActive.value)
+    }
+
+    fun setImageNoiseDepth(depth: Float) {
+        val clamped = depth.coerceIn(0.0f, 1.0f)
+        _imageNoiseDepth.value = clamped
+        audioEngine.imageNoiseDepth = clamped
+    }
+
+    fun setImageScanSpeedHz(speed: Float) {
+        val clamped = speed.coerceIn(0.1f, 10.0f)
+        _imageScanSpeedHz.value = clamped
+        audioEngine.imageScanSpeedHz = clamped
+    }
+
+    // Multi-Tone Layering & Harmonic Chord Controls
+    fun toggleLayering() {
+        setLayeringEnabled(!_isLayeringEnabled.value)
+    }
+
+    fun setLayeringEnabled(enabled: Boolean) {
+        _isLayeringEnabled.value = enabled
+        audioEngine.isLayeringEnabled = enabled
+        if (enabled && _activeChordPreset.value == ChordPreset.OFF) {
+            selectChordPreset(ChordPreset.POWER_FIFTH)
+        }
+        _userFeedbackMessage.value = if (enabled) "Multi-tone layering active" else "Multi-tone layering disabled"
+    }
+
+    fun selectChordPreset(preset: ChordPreset) {
+        _activeChordPreset.value = preset
+        audioEngine.applyChordPreset(preset, _carrierFreq.value)
+        _isLayeringEnabled.value = (preset != ChordPreset.OFF)
+        _layer2Enabled.value = audioEngine.layer2Enabled
+        _layer3Enabled.value = audioEngine.layer3Enabled
+        _layer2Freq.value = audioEngine.layer2Freq
+        _layer3Freq.value = audioEngine.layer3Freq
+        _layer2Gain.value = audioEngine.layer2Gain
+        _layer3Gain.value = audioEngine.layer3Gain
+        _layer2Interval.value = audioEngine.layer2Interval
+        _layer3Interval.value = audioEngine.layer3Interval
+        _userFeedbackMessage.value = "Chord preset: ${preset.displayName}"
+    }
+
+    fun setLayer2Enabled(enabled: Boolean) {
+        _layer2Enabled.value = enabled
+        audioEngine.layer2Enabled = enabled
+    }
+
+    fun setLayer2Freq(freq: Float) {
+        val clamped = freq.coerceIn(1.0f, 1000.0f)
+        _layer2Freq.value = clamped
+        audioEngine.layer2Freq = clamped
+    }
+
+    fun setLayer2Wave(wave: WaveformType) {
+        _layer2Wave.value = wave
+        audioEngine.layer2Wave = wave
+    }
+
+    fun setLayer2Gain(gain: Float) {
+        val clamped = gain.coerceIn(0.0f, 1.0f)
+        _layer2Gain.value = clamped
+        audioEngine.layer2Gain = clamped
+    }
+
+    fun setLayer2Interval(interval: HarmonicInterval) {
+        _layer2Interval.value = interval
+        audioEngine.layer2Interval = interval
+        if (interval != HarmonicInterval.CUSTOM) {
+            val calculated = (_carrierFreq.value * interval.ratio).coerceIn(1.0f, 1000.0f)
+            _layer2Freq.value = calculated
+            audioEngine.layer2Freq = calculated
+        }
+    }
+
+    fun setLayer3Enabled(enabled: Boolean) {
+        _layer3Enabled.value = enabled
+        audioEngine.layer3Enabled = enabled
+    }
+
+    fun setLayer3Freq(freq: Float) {
+        val clamped = freq.coerceIn(1.0f, 1000.0f)
+        _layer3Freq.value = clamped
+        audioEngine.layer3Freq = clamped
+    }
+
+    fun setLayer3Wave(wave: WaveformType) {
+        _layer3Wave.value = wave
+        audioEngine.layer3Wave = wave
+    }
+
+    fun setLayer3Gain(gain: Float) {
+        val clamped = gain.coerceIn(0.0f, 1.0f)
+        _layer3Gain.value = clamped
+        audioEngine.layer3Gain = clamped
+    }
+
+    fun setLayer3Interval(interval: HarmonicInterval) {
+        _layer3Interval.value = interval
+        audioEngine.layer3Interval = interval
+        if (interval != HarmonicInterval.CUSTOM) {
+            val calculated = (_carrierFreq.value * interval.ratio).coerceIn(1.0f, 1000.0f)
+            _layer3Freq.value = calculated
+            audioEngine.layer3Freq = calculated
+        }
     }
 
     // Card Reordering & Layout Customization
@@ -436,6 +730,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         setRightCarrierFreq(preset.rightCarrierFreq)
         setWhiteNoiseEnabled(preset.isWhiteNoiseEnabled)
         setWhiteNoiseLevel(preset.whiteNoiseLevel)
+        setNoiseColor(preset.getNoiseColorType())
+        setLayeringEnabled(preset.isLayeringEnabled)
+        selectChordPreset(preset.getChordPresetType())
+        setLayer2Freq(preset.layer2Freq)
+        setLayer2Gain(preset.layer2Gain)
+        setLayer3Freq(preset.layer3Freq)
+        setLayer3Gain(preset.layer3Gain)
         setModFreq(preset.modFreq)
         setModIntensity(preset.modIntensity)
         setModWave(preset.getModWaveType())
@@ -455,6 +756,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 rightCarrierFreq = _rightCarrierFreq.value,
                 isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value,
                 whiteNoiseLevel = _whiteNoiseLevel.value,
+                noiseColor = _noiseColor.value.name,
+                isLayeringEnabled = _isLayeringEnabled.value,
+                chordPreset = _activeChordPreset.value.name,
+                layer2Freq = _layer2Freq.value,
+                layer2Gain = _layer2Gain.value,
+                layer3Freq = _layer3Freq.value,
+                layer3Gain = _layer3Gain.value,
                 modFreq = _modFreq.value,
                 modIntensity = _modIntensity.value,
                 modWave = _modWave.value.name,
@@ -517,6 +825,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     rightCarrierFreq = _rightCarrierFreq.value,
                     isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value,
                     whiteNoiseLevel = _whiteNoiseLevel.value,
+                    noiseColor = _noiseColor.value,
+                    isLayeringEnabled = _isLayeringEnabled.value,
+                    layer2Enabled = _layer2Enabled.value,
+                    layer2Freq = _layer2Freq.value,
+                    layer2Wave = _layer2Wave.value,
+                    layer2Gain = _layer2Gain.value,
+                    layer3Enabled = _layer3Enabled.value,
+                    layer3Freq = _layer3Freq.value,
+                    layer3Wave = _layer3Wave.value,
+                    layer3Gain = _layer3Gain.value,
                     modFreq = _modFreq.value,
                     modIntensity = _modIntensity.value,
                     modWave = _modWave.value,

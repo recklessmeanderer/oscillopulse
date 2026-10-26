@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioConfig
+import com.example.model.NoiseColor
 import com.example.model.ScopeTheme
 
 @Composable
@@ -34,12 +35,16 @@ fun SettingsDialog(
     bitDepth: Int,
     isWhiteNoiseEnabled: Boolean,
     whiteNoiseLevel: Float,
+    noiseColor: NoiseColor,
+    isDuckingEnabled: Boolean,
     onToggleDarkMode: (Boolean) -> Unit,
     onSelectScopeTheme: (ScopeTheme) -> Unit,
     onSelectSampleRate: (Int) -> Unit,
     onSelectBitDepth: (Int) -> Unit,
     onToggleWhiteNoise: (Boolean) -> Unit,
     onWhiteNoiseLevelChange: (Float) -> Unit,
+    onSelectNoiseColor: (NoiseColor) -> Unit,
+    onToggleDucking: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -249,7 +254,41 @@ fun SettingsDialog(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                        Column(
+                            modifier = Modifier.padding(top = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Noise Color Selector (White, Pink, Brown)
+                            Column {
+                                Text(
+                                    text = "Noise Color & Spectrum",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    NoiseColor.values().forEach { color ->
+                                        val isSelected = noiseColor == color
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { onSelectNoiseColor(color) },
+                                            label = { Text(color.displayName, fontSize = 10.sp) },
+                                            modifier = Modifier.weight(1f).height(30.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = noiseColor.description,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -304,6 +343,47 @@ fun SettingsDialog(
                             }
                         }
                     }
+                }
+
+                HorizontalDivider()
+
+                // Audio Focus & Automatic Ducking
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Auto Audio Ducking",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "SMOOTH FADE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Smoothly dim audio volume to 25% during GPS navigation turns, calls & alerts, then fade back up",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isDuckingEnabled,
+                        onCheckedChange = onToggleDucking
+                    )
                 }
             }
         },

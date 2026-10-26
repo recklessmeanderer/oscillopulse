@@ -27,6 +27,10 @@ import com.example.model.ScopeTheme
 import kotlin.math.abs
 import kotlin.math.sqrt
 
+import android.graphics.Bitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+
 @Composable
 fun OscilloscopeCanvas(
     samples: FloatArray,
@@ -40,9 +44,15 @@ fun OscilloscopeCanvas(
     leftCarrierFreq: Float = 0f,
     rightCarrierFreq: Float = 0f,
     isCollapsed: Boolean = false,
+    backgroundImage: Bitmap? = null,
+    backgroundOpacity: Float = 0.35f,
+    isImageNoiseActive: Boolean = false,
+    opticalScanProgress: Float = 0f,
+    onOpenImageNoiseDialog: (() -> Unit)? = null,
     onToggleCollapse: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val imageBitmap = remember(backgroundImage) { backgroundImage?.asImageBitmap() }
     var internalCollapsed by remember { mutableStateOf(isCollapsed) }
     val effectiveCollapsed = if (onToggleCollapse != null) isCollapsed else internalCollapsed
     val toggleCollapse: () -> Unit = {
@@ -210,6 +220,23 @@ fun OscilloscopeCanvas(
                         )
                     }
 
+                    // Optical Sonification & Wallpaper Dialog Button
+                    if (onOpenImageNoiseDialog != null) {
+                        IconButton(
+                            onClick = onOpenImageNoiseDialog,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .testTag("oscilloscope_image_button")
+                        ) {
+                            Icon(
+                                imageVector = if (imageBitmap != null) Icons.Default.Wallpaper else Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Oscilloscope Wallpaper & Optical Noise",
+                                tint = if (imageBitmap != null || isImageNoiseActive) traceColor else Color(0xFF94A3B8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
                     // Chevron Expand/Collapse icon
                     IconButton(
                         onClick = { toggleCollapse() },
@@ -249,6 +276,50 @@ fun OscilloscopeCanvas(
                             val w = size.width
                             val h = size.height
                             val centerY = h / 2f
+
+                            // 1. Draw custom background wallpaper image if loaded
+                            if (imageBitmap != null) {
+                                drawImage(
+                                    image = imageBitmap,
+                                    dstOffset = IntOffset.Zero,
+                                    dstSize = IntSize(w.toInt(), h.toInt()),
+                                    alpha = backgroundOpacity
+                                )
+                                // Dark scrim for trace readability
+                                drawRect(Color(0xFF030712).copy(alpha = 0.25f))
+                            }
+
+                            // 2. Optical Scanline Progress Cursor
+                            if (isImageNoiseActive) {
+                                val scanX = w * (opticalScanProgress % 1.0f)
+                                // Soft wide glow beam
+                                drawLine(
+                                    color = traceColor.copy(alpha = 0.18f),
+                                    start = Offset(scanX, 0f),
+                                    end = Offset(scanX, h),
+                                    strokeWidth = 14f
+                                )
+                                // Core scan cursor line
+                                drawLine(
+                                    color = traceColor.copy(alpha = 0.9f),
+                                    start = Offset(scanX, 0f),
+                                    end = Offset(scanX, h),
+                                    strokeWidth = 2f
+                                )
+                                // Scanline reticle ticks
+                                drawLine(
+                                    color = Color.White,
+                                    start = Offset(scanX - 4f, 0f),
+                                    end = Offset(scanX + 4f, 0f),
+                                    strokeWidth = 3f
+                                )
+                                drawLine(
+                                    color = Color.White,
+                                    start = Offset(scanX - 4f, h),
+                                    end = Offset(scanX + 4f, h),
+                                    strokeWidth = 3f
+                                )
+                            }
 
                             // Draw Grid
                             val numCols = 10
@@ -379,6 +450,15 @@ fun OscilloscopeCanvas(
                                 fontFamily = FontFamily.Monospace,
                                 color = Color(0xFF64748B)
                             )
+                            if (isImageNoiseActive) {
+                                Text(
+                                    text = String.format("SCAN: %02d%%", (opticalScanProgress * 100).toInt()),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B)
+                                )
+                            }
                         }
 
                         // Overlay Frequency info at bottom-left of canvas
@@ -425,7 +505,7 @@ fun OscilloscopeCanvas(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Quick Scope Controls (Timebase zoom & Amplitude scale)
+                    // Quick Scope Controls (Timebase zoom, Amplitude scale, Image sonification)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -444,7 +524,7 @@ fun OscilloscopeCanvas(
                             }
                         }
 
-                        // Vertical Gain buttons
+                        // Right side: Gain buttons + Image Wallpaper button
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("GAIN:", fontSize = 10.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
                             listOf(0.5f to "0.5x", 1.0f to "1x", 1.5f to "1.5x").forEach { (gain, label) ->
@@ -453,6 +533,22 @@ fun OscilloscopeCanvas(
                                     onClick = { amplitudeGain = gain },
                                     label = { Text(label, fontSize = 10.sp) },
                                     modifier = Modifier.height(28.dp)
+                                )
+                            }
+
+                            if (onOpenImageNoiseDialog != null) {
+                                FilterChip(
+                                    selected = imageBitmap != null || isImageNoiseActive,
+                                    onClick = onOpenImageNoiseDialog,
+                                    label = { Text(if (imageBitmap != null) "BG" else "+BG", fontSize = 10.sp) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.AddPhotoAlternate,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.height(28.dp).testTag("quick_scope_bg_chip")
                                 )
                             }
                         }

@@ -3,7 +3,10 @@ package com.example.audio
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import com.example.model.ChordPreset
+import com.example.model.HarmonicInterval
 import com.example.model.ModulationMode
+import com.example.model.NoiseColor
 import com.example.model.WaveformType
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +39,7 @@ class AudioEngine(private val filesDir: File) {
     }
 
     fun getSummaryDescription(): String {
-        return if (isBinauralEnabled) {
+        val baseDesc = if (isBinauralEnabled) {
             val beat = kotlin.math.abs(rightCarrierFreq - leftCarrierFreq)
             "Binaural ${leftCarrierFreq.toInt()}Hz / ${rightCarrierFreq.toInt()}Hz (${beat.toInt()}Hz beat)"
         } else {
@@ -44,6 +47,9 @@ class AudioEngine(private val filesDir: File) {
             val modDesc = "${modFreq.toInt()} Hz ${modMode.displayName}"
             "$carrierDesc • $modDesc"
         }
+        val layerDesc = if (isLayeringEnabled && (layer2Enabled || layer3Enabled)) " • ${activeChordPreset.displayName}" else ""
+        val noiseDesc = if (isWhiteNoiseEnabled && whiteNoiseLevel > 0f) " • ${noiseColor.displayName}" else ""
+        return "$baseDesc$layerDesc$noiseDesc"
     }
 
     // Volatile parameters for real-time thread safety
@@ -59,10 +65,79 @@ class AudioEngine(private val filesDir: File) {
     @Volatile var rightCarrierFreq: Float = 472.0f
         set(value) { field = value.coerceIn(1.0f, 1000.0f) }
 
-    // White Noise Floor Generator
     @Volatile var isWhiteNoiseEnabled: Boolean = false
     @Volatile var whiteNoiseLevel: Float = 0.15f // 0.0f to 1.0f
         set(value) { field = value.coerceIn(0.0f, 1.0f) }
+    @Volatile var noiseColor: NoiseColor = NoiseColor.WHITE
+
+    // Image Optical Noise Sonification
+    @Volatile var isImageNoiseEnabled: Boolean = false
+    @Volatile var imageNoiseDepth: Float = 0.5f // 0.0 to 1.0 modulation intensity
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+    @Volatile var imageScanSpeedHz: Float = 1.0f // 0.1 to 10.0 Hz scan rate
+        set(value) { field = value.coerceIn(0.1f, 10.0f) }
+    @Volatile var imageAudioProfile: FloatArray? = null
+
+    private val _opticalScanProgress = MutableStateFlow(0f)
+    val opticalScanProgress = _opticalScanProgress.asStateFlow()
+
+    // Audio Focus Ducking
+    @Volatile var isDuckingEnabled: Boolean = true
+    @Volatile var duckTarget: Float = 1.0f // 1.0f full volume, 0.25f when ducked
+    private var smoothedDuckFactor: Float = 1.0f
+
+    // Multi-Tone Layering & Harmonic Chords
+    @Volatile var isLayeringEnabled: Boolean = false
+    @Volatile var activeChordPreset: ChordPreset = ChordPreset.OFF
+
+    @Volatile var layer2Enabled: Boolean = true
+    @Volatile var layer2Freq: Float = 648.0f // 432 * 1.5 (Perfect 5th)
+        set(value) { field = value.coerceIn(1.0f, 1000.0f) }
+    @Volatile var layer2Wave: WaveformType = WaveformType.SINE
+    @Volatile var layer2Gain: Float = 0.45f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+    @Volatile var layer2Interval: HarmonicInterval = HarmonicInterval.PERFECT_FIFTH
+
+    @Volatile var layer3Enabled: Boolean = true
+    @Volatile var layer3Freq: Float = 864.0f // 432 * 2.0 (Octave)
+        set(value) { field = value.coerceIn(1.0f, 1000.0f) }
+    @Volatile var layer3Wave: WaveformType = WaveformType.SINE
+    @Volatile var layer3Gain: Float = 0.35f
+        set(value) { field = value.coerceIn(0.0f, 1.0f) }
+    @Volatile var layer3Interval: HarmonicInterval = HarmonicInterval.OCTAVE_UP
+
+    fun applyChordPreset(preset: ChordPreset, baseFreq: Float = carrierFreq) {
+        activeChordPreset = preset
+        if (preset == ChordPreset.OFF) {
+            isLayeringEnabled = false
+            return
+        }
+        isLayeringEnabled = true
+        layer2Enabled = true
+        layer3Enabled = true
+        layer2Interval = preset.layer2Interval
+        layer3Interval = preset.layer3Interval
+        layer2Gain = preset.layer2Gain
+        layer3Gain = preset.layer3Gain
+
+        if (preset == ChordPreset.SOLFEGGIO_TRIAD) {
+            layer2Freq = 528.0f
+            layer3Freq = 639.0f
+        } else {
+            layer2Freq = (baseFreq * preset.layer2Interval.ratio).coerceIn(1.0f, 1000.0f)
+            layer3Freq = (baseFreq * preset.layer3Interval.ratio).coerceIn(1.0f, 1000.0f)
+        }
+    }
+
+    fun syncLayerFrequenciesToBase(baseFreq: Float) {
+        if (!isLayeringEnabled) return
+        if (layer2Interval != HarmonicInterval.CUSTOM) {
+            layer2Freq = (baseFreq * layer2Interval.ratio).coerceIn(1.0f, 1000.0f)
+        }
+        if (layer3Interval != HarmonicInterval.CUSTOM) {
+            layer3Freq = (baseFreq * layer3Interval.ratio).coerceIn(1.0f, 1000.0f)
+        }
+    }
 
     @Volatile var modFreq: Float = 40.0f
         set(value) { field = value.coerceIn(0.1f, 200.0f) }
@@ -259,13 +334,35 @@ class AudioEngine(private val filesDir: File) {
             var carrierPhaseL = 0.0
             var carrierPhaseR = 0.0
             var modPhase = 0.0
+            var layer2Phase = 0.0
+            var layer3Phase = 0.0
+            var opticalScanPhase = 0.0
+
+            // Pink noise Paul Kellet filter state
+            var p0L = 0f; var p1L = 0f; var p2L = 0f; var p3L = 0f; var p4L = 0f; var p5L = 0f; var p6L = 0f
+            var p0R = 0f; var p1R = 0f; var p2R = 0f; var p3R = 0f; var p4R = 0f; var p5R = 0f; var p6R = 0f
+
+            // Brown noise leaky integrator state
+            var brownL = 0f
+            var brownR = 0f
+
             val twoPi = 2.0 * Math.PI
 
             // Reusable byte buffer for writing to recording stream if recording
             val recByteBuffer = ByteBuffer.allocate(bufferSamples * numChannels * 4).order(ByteOrder.LITTLE_ENDIAN)
 
             while (isActive && _isPlaying.value) {
-                val targetVol = if (isMuted) 0.0f else volume
+                // Smoothly interpolate duck factor
+                val targetDuck = if (isDuckingEnabled) duckTarget else 1.0f
+                smoothedDuckFactor += (targetDuck - smoothedDuckFactor) * 0.15f
+                val effectiveVol = (if (isMuted) 0.0f else volume) * smoothedDuckFactor
+
+                val isImgNoise = isImageNoiseEnabled
+                val imgProfile = imageAudioProfile
+                val imgDepth = imageNoiseDepth
+                val scanSpeed = imageScanSpeedHz
+                val scanPhaseInc = if (isImgNoise && imgProfile != null) (scanSpeed.toDouble() / currentSampleRate) else 0.0
+
                 val cWave = carrierWave
                 val mWave = modWave
                 val mMode = modMode
@@ -286,16 +383,53 @@ class AudioEngine(private val filesDir: File) {
                 val phaseIncCR = (twoPi * freqR) / currentSampleRate
                 val phaseIncM = (twoPi * mFreq.toDouble()) / currentSampleRate
 
+                // Layering phase increments
+                val layeringOn = isLayeringEnabled
+                val l2On = layer2Enabled
+                val l2Freq = layer2Freq
+                val l2Wave = layer2Wave
+                val l2Gain = layer2Gain
+                val phaseIncL2 = (twoPi * l2Freq.toDouble()) / currentSampleRate
+
+                val l3On = layer3Enabled
+                val l3Freq = layer3Freq
+                val l3Wave = layer3Wave
+                val l3Gain = layer3Gain
+                val phaseIncL3 = (twoPi * l3Freq.toDouble()) / currentSampleRate
+
                 val noiseEnabled = isWhiteNoiseEnabled
                 val noiseLvl = whiteNoiseLevel
+                val nColor = noiseColor
                 val rng = java.util.Random()
 
                 var maxMagnitude = 0f
                 recByteBuffer.clear()
 
                 for (i in 0 until bufferSamples) {
-                    val rawCarrierL = cWave.calculate(carrierPhaseL)
-                    val rawCarrierR = cWave.calculate(carrierPhaseR)
+                    var rawCarrierL = cWave.calculate(carrierPhaseL)
+                    var rawCarrierR = cWave.calculate(carrierPhaseR)
+
+                    var totalCarrierGain = 1.0f
+                    if (layeringOn) {
+                        if (l2On && l2Gain > 0f) {
+                            val sampleL2 = l2Wave.calculate(layer2Phase) * l2Gain
+                            rawCarrierL += sampleL2
+                            rawCarrierR += sampleL2
+                            totalCarrierGain += l2Gain
+                            layer2Phase = (layer2Phase + phaseIncL2) % twoPi
+                        }
+                        if (l3On && l3Gain > 0f) {
+                            val sampleL3 = l3Wave.calculate(layer3Phase) * l3Gain
+                            rawCarrierL += sampleL3
+                            rawCarrierR += sampleL3
+                            totalCarrierGain += l3Gain
+                            layer3Phase = (layer3Phase + phaseIncL3) % twoPi
+                        }
+                    }
+
+                    val carrierNorm = if (totalCarrierGain > 1.0f) 1.0f / totalCarrierGain else 1.0f
+                    val carrierSigL = rawCarrierL * carrierNorm
+                    val carrierSigR = rawCarrierR * carrierNorm
 
                     val rawMod = mWave.calculate(modPhase)
 
@@ -313,15 +447,59 @@ class AudioEngine(private val filesDir: File) {
                         else -> Pair(1.0f, 1.0f)
                     }
 
-                    var sL = rawCarrierL * envL * targetVol
-                    var sR = rawCarrierR * envR * targetVol
+                    var sL = carrierSigL * envL * effectiveVol
+                    var sR = carrierSigR * envR * effectiveVol
 
                     if (noiseEnabled && noiseLvl > 0f) {
-                        // Stereo decorrelated white noise floor
-                        val nL = (rng.nextFloat() * 2f - 1f) * noiseLvl * targetVol
-                        val nR = (rng.nextFloat() * 2f - 1f) * noiseLvl * targetVol
-                        sL += nL
-                        sR += nR
+                        val whiteL = rng.nextFloat() * 2f - 1f
+                        val whiteR = rng.nextFloat() * 2f - 1f
+
+                        val (noiseSampleL, noiseSampleR) = when (nColor) {
+                            NoiseColor.WHITE -> Pair(whiteL, whiteR)
+                            NoiseColor.PINK -> {
+                                p0L = 0.99886f * p0L + whiteL * 0.0555179f
+                                p1L = 0.99332f * p1L + whiteL * 0.0750759f
+                                p2L = 0.96900f * p2L + whiteL * 0.1538520f
+                                p3L = 0.86650f * p3L + whiteL * 0.3104856f
+                                p4L = 0.55000f * p4L + whiteL * 0.5329522f
+                                p5L = -0.7616f * p5L - whiteL * 0.0168980f
+                                val pinkL = (p0L + p1L + p2L + p3L + p4L + p5L + p6L + whiteL * 0.5362f) * 0.11f
+                                p6L = whiteL * 0.115926f
+
+                                p0R = 0.99886f * p0R + whiteR * 0.0555179f
+                                p1R = 0.99332f * p1R + whiteR * 0.0750759f
+                                p2R = 0.96900f * p2R + whiteR * 0.1538520f
+                                p3R = 0.86650f * p3R + whiteR * 0.3104856f
+                                p4R = 0.55000f * p4R + whiteR * 0.5329522f
+                                p5R = -0.7616f * p5R - whiteR * 0.0168980f
+                                val pinkR = (p0R + p1R + p2R + p3R + p4R + p5R + p6R + whiteR * 0.5362f) * 0.11f
+                                p6R = whiteR * 0.115926f
+
+                                Pair(pinkL * 1.5f, pinkR * 1.5f)
+                            }
+                            NoiseColor.BROWN -> {
+                                brownL = (brownL + (0.025f * whiteL)) / 1.02f
+                                brownR = (brownR + (0.025f * whiteR)) / 1.02f
+                                Pair(brownL * 3.5f, brownR * 3.5f)
+                            }
+                        }
+
+                        // Optical image modulation if enabled
+                        val opticalMod = if (isImgNoise && imgProfile != null && imgProfile.isNotEmpty()) {
+                            val profIdx = ((opticalScanPhase % 1.0) * (imgProfile.size - 1)).toInt().coerceIn(0, imgProfile.size - 1)
+                            val lum = imgProfile[profIdx] // 0.0f to 1.0f
+                            // Modulation factor: depth modulates volume based on column luminance
+                            (1.0f - imgDepth * 0.7f) + (lum * imgDepth * 1.4f)
+                        } else {
+                            1.0f
+                        }
+
+                        sL += noiseSampleL * noiseLvl * opticalMod * effectiveVol
+                        sR += noiseSampleR * noiseLvl * opticalMod * effectiveVol
+                    }
+
+                    if (isImgNoise && imgProfile != null) {
+                        opticalScanPhase = (opticalScanPhase + scanPhaseInc) % 1.0
                     }
 
                     val sampleL = sL.coerceIn(-1.0f, 1.0f)
@@ -355,6 +533,9 @@ class AudioEngine(private val filesDir: File) {
                 }
 
                 _peakLevel.value = maxMagnitude
+                if (isImgNoise) {
+                    _opticalScanProgress.value = (opticalScanPhase % 1.0).toFloat()
+                }
 
                 // Write to live audio output
                 track.write(shortBuffer, 0, bufferSamples * numChannels)

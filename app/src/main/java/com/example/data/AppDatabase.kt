@@ -49,7 +49,7 @@ interface RecordingDao {
     suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 6, exportSchema = false)
+@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 7, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun presetDao(): PresetDao
     abstract fun recordingDao(): RecordingDao
@@ -176,7 +176,7 @@ abstract class AppDatabase : RoomDatabase() {
                 PresetEntity(
                     id = 8L,
                     name = "Delta Sleep & White Noise",
-                    description = "100Hz soothing carrier + 2.5Hz Delta modulation blended with a relaxing white noise floor for acoustic masking and sleep",
+                    description = "100Hz soothing carrier + 2.5Hz Delta modulation blended with a relaxing white noise floor",
                     carrierFreq = 100.0f,
                     carrierWave = WaveformType.SINE.name,
                     modFreq = 2.5f,
@@ -185,6 +185,55 @@ abstract class AppDatabase : RoomDatabase() {
                     modMode = ModulationMode.ISOCHRONIC_PULSE.name,
                     isWhiteNoiseEnabled = true,
                     whiteNoiseLevel = 0.18f,
+                    noiseColor = "WHITE",
+                    isFactory = true
+                ),
+                PresetEntity(
+                    id = 9L,
+                    name = "Deep Brown Noise & Theta",
+                    description = "Deep warm brown rumble resembling ocean surf blended with 108Hz carrier and 6Hz Theta entrainment",
+                    carrierFreq = 108.0f,
+                    carrierWave = WaveformType.SINE.name,
+                    modFreq = 6.0f,
+                    modIntensity = 0.7f,
+                    modWave = WaveformType.SINE.name,
+                    modMode = ModulationMode.ISOCHRONIC_PULSE.name,
+                    isWhiteNoiseEnabled = true,
+                    whiteNoiseLevel = 0.22f,
+                    noiseColor = "BROWN",
+                    isFactory = true
+                ),
+                PresetEntity(
+                    id = 10L,
+                    name = "Solfeggio Harmonic Triad",
+                    description = "Multi-tone chord stack: 432Hz fundamental + 528Hz + 639Hz sacred resonance triad",
+                    carrierFreq = 432.0f,
+                    carrierWave = WaveformType.SINE.name,
+                    modFreq = 10.0f,
+                    modIntensity = 0.4f,
+                    modWave = WaveformType.SINE.name,
+                    modMode = ModulationMode.AMPLITUDE_MODULATION.name,
+                    isLayeringEnabled = true,
+                    chordPreset = "SOLFEGGIO_TRIAD",
+                    layer2Freq = 528.0f,
+                    layer2Gain = 0.45f,
+                    layer3Freq = 639.0f,
+                    layer3Gain = 0.40f,
+                    isFactory = true
+                ),
+                PresetEntity(
+                    id = 11L,
+                    name = "Pink Noise Zen Rainfall",
+                    description = "Gentle natural 1/f pink noise with 432Hz carrier and smooth 10Hz Alpha relaxation wave",
+                    carrierFreq = 432.0f,
+                    carrierWave = WaveformType.SINE.name,
+                    modFreq = 10.0f,
+                    modIntensity = 0.5f,
+                    modWave = WaveformType.SINE.name,
+                    modMode = ModulationMode.AMPLITUDE_MODULATION.name,
+                    isWhiteNoiseEnabled = true,
+                    whiteNoiseLevel = 0.18f,
+                    noiseColor = "PINK",
                     isFactory = true
                 )
             )

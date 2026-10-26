@@ -2,7 +2,9 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.example.model.ChordPreset
 import com.example.model.ModulationMode
+import com.example.model.NoiseColor
 import com.example.model.WaveformType
 
 @Entity(tableName = "presets")
@@ -22,6 +24,13 @@ data class PresetEntity(
     val rightCarrierFreq: Float = 472.0f,
     val isWhiteNoiseEnabled: Boolean = false,
     val whiteNoiseLevel: Float = 0.15f,
+    val noiseColor: String = NoiseColor.WHITE.name,
+    val isLayeringEnabled: Boolean = false,
+    val chordPreset: String = ChordPreset.OFF.name,
+    val layer2Freq: Float = 648.0f,
+    val layer2Gain: Float = 0.45f,
+    val layer3Freq: Float = 864.0f,
+    val layer3Gain: Float = 0.35f,
     val sampleRate: Int = 44100,
     val bitDepth: Int = 16,
     val isFactory: Boolean = false
@@ -37,6 +46,14 @@ data class PresetEntity(
     fun getModulationMode(): ModulationMode = runCatching {
         ModulationMode.valueOf(modMode)
     }.getOrDefault(ModulationMode.ISOCHRONIC_PULSE)
+
+    fun getNoiseColorType(): NoiseColor = runCatching {
+        NoiseColor.valueOf(noiseColor)
+    }.getOrDefault(NoiseColor.WHITE)
+
+    fun getChordPresetType(): ChordPreset = runCatching {
+        ChordPreset.valueOf(chordPreset)
+    }.getOrDefault(ChordPreset.OFF)
 }
 
 @Entity(tableName = "recordings")

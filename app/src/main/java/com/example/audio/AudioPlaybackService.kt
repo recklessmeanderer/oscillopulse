@@ -62,6 +62,28 @@ class AudioPlaybackService : Service() {
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                audioEngine.stop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                audioEngine.stop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Dim synthesis volume temporarily during notification chimes / GPS alerts
+                audioEngine.duckTarget = 0.25f
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                // Restore volume smoothly
+                audioEngine.duckTarget = 1.0f
+            }
+        }
+    }
+
     private var isReceiverRegistered = false
     private val becomingNoisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -75,16 +97,57 @@ class AudioPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         audioEngine = AudioEngine.getInstance(this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         createNotificationChannel()
         setupMediaSession()
         registerBecomingNoisyReceiver()
 
-        // Observe playback state changes to update the sticky notification and MediaSession
+        // Observe playback state changes to update the sticky notification, MediaSession, and AudioFocus
         serviceScope.launch {
             audioEngine.isPlaying.collectLatest { isPlaying ->
+                if (isPlaying) {
+                    requestAudioFocus()
+                } else {
+                    audioEngine.duckTarget = 1.0f
+                    abandonAudioFocus()
+                }
                 updatePlaybackState(isPlaying)
                 updateNotification(isPlaying)
             }
+        }
+    }
+
+    private fun requestAudioFocus() {
+        val am = audioManager ?: (getSystemService(Context.AUDIO_SERVICE) as? AudioManager).also { audioManager = it } ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val playbackAttributes = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(playbackAttributes)
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .setWillPauseWhenDucked(false)
+                .build()
+            audioFocusRequest = request
+            am.requestAudioFocus(request)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager?.abandonAudioFocus(audioFocusChangeListener)
         }
     }
 
@@ -309,6 +372,7 @@ class AudioPlaybackService : Service() {
         super.onDestroy()
         serviceScope.cancel()
         unregisterBecomingNoisyReceiver()
+        abandonAudioFocus()
         mediaSession?.let {
             it.isActive = false
             it.release()

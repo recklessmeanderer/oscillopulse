@@ -29,10 +29,11 @@ class ExampleUnitTest {
   @Test
   fun testAppCardModuleOrder() {
     val defaultList = com.example.model.AppCardModule.DEFAULT_ORDER
-    assertEquals(5, defaultList.size)
+    assertEquals(6, defaultList.size)
     assertEquals(com.example.model.AppCardModule.OSCILLOSCOPE, defaultList[0])
     assertEquals(com.example.model.AppCardModule.TRANSPORT, defaultList[1])
     assertEquals(com.example.model.AppCardModule.CARRIER, defaultList[2])
+    assertEquals(com.example.model.AppCardModule.LAYERING, defaultList[3])
 
     // Test reorder swap
     val mutableList = defaultList.toMutableList()
@@ -66,5 +67,37 @@ class ExampleUnitTest {
     val newRight = newCarrier + beatOffset
     assertEquals(568f, newRight, 0.001f)
     assertEquals(40f, newRight - newLeft, 0.001f)
+  }
+
+  @Test
+  fun testNoiseColors() {
+    val pinkPreset = com.example.data.PresetEntity(
+      name = "Pink Rain",
+      isWhiteNoiseEnabled = true,
+      whiteNoiseLevel = 0.25f,
+      noiseColor = "PINK"
+    )
+    assertEquals(com.example.model.NoiseColor.PINK, pinkPreset.getNoiseColorType())
+
+    val brownPreset = com.example.data.PresetEntity(
+      name = "Brown Waterfall",
+      isWhiteNoiseEnabled = true,
+      whiteNoiseLevel = 0.30f,
+      noiseColor = "BROWN"
+    )
+    assertEquals(com.example.model.NoiseColor.BROWN, brownPreset.getNoiseColorType())
+  }
+
+  @Test
+  fun testChordPresetCalculations() {
+    val base = 432.0f
+    val fifthRatio = com.example.model.HarmonicInterval.PERFECT_FIFTH.ratio
+    val octaveRatio = com.example.model.HarmonicInterval.OCTAVE_UP.ratio
+    assertEquals(648.0f, base * fifthRatio, 0.01f)
+    assertEquals(864.0f, base * octaveRatio, 0.01f)
+
+    val chord = com.example.model.ChordPreset.POWER_FIFTH
+    assertEquals(com.example.model.HarmonicInterval.PERFECT_FIFTH, chord.layer2Interval)
+    assertEquals(com.example.model.HarmonicInterval.OCTAVE_UP, chord.layer3Interval)
   }
 }

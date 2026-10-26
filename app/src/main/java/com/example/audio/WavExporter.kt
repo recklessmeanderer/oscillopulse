@@ -26,6 +26,16 @@ object WavExporter {
         rightCarrierFreq: Float = 472f,
         isWhiteNoiseEnabled: Boolean = false,
         whiteNoiseLevel: Float = 0.15f,
+        noiseColor: com.example.model.NoiseColor = com.example.model.NoiseColor.WHITE,
+        isLayeringEnabled: Boolean = false,
+        layer2Enabled: Boolean = false,
+        layer2Freq: Float = 648f,
+        layer2Wave: WaveformType = WaveformType.SINE,
+        layer2Gain: Float = 0.45f,
+        layer3Enabled: Boolean = false,
+        layer3Freq: Float = 864f,
+        layer3Wave: WaveformType = WaveformType.SINE,
+        layer3Gain: Float = 0.35f,
         durationSeconds: Float,
         sampleRate: Int,
         bitDepth: Int,
@@ -41,6 +51,14 @@ object WavExporter {
         var carrierPhaseL = 0.0
         var carrierPhaseR = 0.0
         var modPhase = 0.0
+        var layer2Phase = 0.0
+        var layer3Phase = 0.0
+
+        // Noise filter states
+        var p0L = 0f; var p1L = 0f; var p2L = 0f; var p3L = 0f; var p4L = 0f; var p5L = 0f; var p6L = 0f
+        var p0R = 0f; var p1R = 0f; var p2R = 0f; var p3R = 0f; var p4R = 0f; var p5R = 0f; var p6R = 0f
+        var brownL = 0f
+        var brownR = 0f
 
         val twoPi = 2.0 * Math.PI
 
@@ -56,6 +74,9 @@ object WavExporter {
         val phaseIncCL = (twoPi * carrierFreqL) / sampleRate
         val phaseIncCR = (twoPi * carrierFreqR) / sampleRate
         val phaseIncM = (twoPi * modFreq.toDouble()) / sampleRate
+
+        val phaseIncL2 = (twoPi * layer2Freq.toDouble()) / sampleRate
+        val phaseIncL3 = (twoPi * layer3Freq.toDouble()) / sampleRate
         val rng = java.util.Random()
 
         FileOutputStream(outputFile).use { fos ->
@@ -77,21 +98,74 @@ object WavExporter {
                 byteBuffer.clear()
 
                 for (i in 0 until chunkSize) {
-                    val rawCarrierL = carrierWave.calculate(carrierPhaseL)
-                    val rawCarrierR = carrierWave.calculate(carrierPhaseR)
+                    var rawCarrierL = carrierWave.calculate(carrierPhaseL)
+                    var rawCarrierR = carrierWave.calculate(carrierPhaseR)
+
+                    var totalCarrierGain = 1.0f
+                    if (isLayeringEnabled) {
+                        if (layer2Enabled && layer2Gain > 0f) {
+                            val s2 = layer2Wave.calculate(layer2Phase) * layer2Gain
+                            rawCarrierL += s2
+                            rawCarrierR += s2
+                            totalCarrierGain += layer2Gain
+                            layer2Phase = (layer2Phase + phaseIncL2) % twoPi
+                        }
+                        if (layer3Enabled && layer3Gain > 0f) {
+                            val s3 = layer3Wave.calculate(layer3Phase) * layer3Gain
+                            rawCarrierL += s3
+                            rawCarrierR += s3
+                            totalCarrierGain += layer3Gain
+                            layer3Phase = (layer3Phase + phaseIncL3) % twoPi
+                        }
+                    }
+
+                    val carrierNorm = if (totalCarrierGain > 1.0f) 1.0f / totalCarrierGain else 1.0f
+                    val carrierSigL = rawCarrierL * carrierNorm
+                    val carrierSigR = rawCarrierR * carrierNorm
 
                     val rawMod = modWave.calculate(modPhase)
 
                     val (envL, envR) = if (isBinauralEnabled) Pair(1.0f, 1.0f) else calculateEnvelope(rawMod, modIntensity, modMode)
 
-                    var sL = rawCarrierL * envL * volume
-                    var sR = rawCarrierR * envR * volume
+                    var sL = carrierSigL * envL * volume
+                    var sR = carrierSigR * envR * volume
 
                     if (isWhiteNoiseEnabled && whiteNoiseLevel > 0f) {
-                        val nL = (rng.nextFloat() * 2f - 1f) * whiteNoiseLevel * volume
-                        val nR = (rng.nextFloat() * 2f - 1f) * whiteNoiseLevel * volume
-                        sL += nL
-                        sR += nR
+                        val whiteL = rng.nextFloat() * 2f - 1f
+                        val whiteR = rng.nextFloat() * 2f - 1f
+
+                        val (noiseSampleL, noiseSampleR) = when (noiseColor) {
+                            com.example.model.NoiseColor.WHITE -> Pair(whiteL, whiteR)
+                            com.example.model.NoiseColor.PINK -> {
+                                p0L = 0.99886f * p0L + whiteL * 0.0555179f
+                                p1L = 0.99332f * p1L + whiteL * 0.0750759f
+                                p2L = 0.96900f * p2L + whiteL * 0.1538520f
+                                p3L = 0.86650f * p3L + whiteL * 0.3104856f
+                                p4L = 0.55000f * p4L + whiteL * 0.5329522f
+                                p5L = -0.7616f * p5L - whiteL * 0.0168980f
+                                val pinkL = (p0L + p1L + p2L + p3L + p4L + p5L + p6L + whiteL * 0.5362f) * 0.11f
+                                p6L = whiteL * 0.115926f
+
+                                p0R = 0.99886f * p0R + whiteR * 0.0555179f
+                                p1R = 0.99332f * p1R + whiteR * 0.0750759f
+                                p2R = 0.96900f * p2R + whiteR * 0.1538520f
+                                p3R = 0.86650f * p3R + whiteR * 0.3104856f
+                                p4R = 0.55000f * p4R + whiteR * 0.5329522f
+                                p5R = -0.7616f * p5R - whiteR * 0.0168980f
+                                val pinkR = (p0R + p1R + p2R + p3R + p4R + p5R + p6R + whiteR * 0.5362f) * 0.11f
+                                p6R = whiteR * 0.115926f
+
+                                Pair(pinkL * 1.5f, pinkR * 1.5f)
+                            }
+                            com.example.model.NoiseColor.BROWN -> {
+                                brownL = (brownL + (0.025f * whiteL)) / 1.02f
+                                brownR = (brownR + (0.025f * whiteR)) / 1.02f
+                                Pair(brownL * 3.5f, brownR * 3.5f)
+                            }
+                        }
+
+                        sL += noiseSampleL * whiteNoiseLevel * volume
+                        sR += noiseSampleR * whiteNoiseLevel * volume
                     }
 
                     val sampleL = sL.coerceIn(-1.0f, 1.0f)

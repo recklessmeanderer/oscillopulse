@@ -25,6 +25,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.AppCardModule
 import com.example.model.ScopeTheme
@@ -47,6 +50,22 @@ fun MainGeneratorScreen(
     val isFrequenciesLinked by viewModel.isFrequenciesLinked.collectAsStateWithLifecycle()
     val isWhiteNoiseEnabled by viewModel.isWhiteNoiseEnabled.collectAsStateWithLifecycle()
     val whiteNoiseLevel by viewModel.whiteNoiseLevel.collectAsStateWithLifecycle()
+    val noiseColor by viewModel.noiseColor.collectAsStateWithLifecycle()
+    val isDuckingEnabled by viewModel.isDuckingEnabled.collectAsStateWithLifecycle()
+
+    val isLayeringEnabled by viewModel.isLayeringEnabled.collectAsStateWithLifecycle()
+    val activeChordPreset by viewModel.activeChordPreset.collectAsStateWithLifecycle()
+    val layer2Enabled by viewModel.layer2Enabled.collectAsStateWithLifecycle()
+    val layer2Freq by viewModel.layer2Freq.collectAsStateWithLifecycle()
+    val layer2Wave by viewModel.layer2Wave.collectAsStateWithLifecycle()
+    val layer2Gain by viewModel.layer2Gain.collectAsStateWithLifecycle()
+    val layer2Interval by viewModel.layer2Interval.collectAsStateWithLifecycle()
+    val layer3Enabled by viewModel.layer3Enabled.collectAsStateWithLifecycle()
+    val layer3Freq by viewModel.layer3Freq.collectAsStateWithLifecycle()
+    val layer3Wave by viewModel.layer3Wave.collectAsStateWithLifecycle()
+    val layer3Gain by viewModel.layer3Gain.collectAsStateWithLifecycle()
+    val layer3Interval by viewModel.layer3Interval.collectAsStateWithLifecycle()
+
     val modFreq by viewModel.modFreq.collectAsStateWithLifecycle()
     val modIntensity by viewModel.modIntensity.collectAsStateWithLifecycle()
     val modWave by viewModel.modWave.collectAsStateWithLifecycle()
@@ -73,8 +92,24 @@ fun MainGeneratorScreen(
     val cardOrder by viewModel.cardOrder.collectAsStateWithLifecycle()
     val isReorderMode by viewModel.isReorderMode.collectAsStateWithLifecycle()
 
+    val scopeBackgroundImage by viewModel.scopeBackgroundImage.collectAsStateWithLifecycle()
+    val scopeBackgroundOpacity by viewModel.scopeBackgroundOpacity.collectAsStateWithLifecycle()
+    val isImageNoiseActive by viewModel.isImageNoiseActive.collectAsStateWithLifecycle()
+    val imageNoiseDepth by viewModel.imageNoiseDepth.collectAsStateWithLifecycle()
+    val imageScanSpeedHz by viewModel.imageScanSpeedHz.collectAsStateWithLifecycle()
+    val selectedImageName by viewModel.selectedImageName.collectAsStateWithLifecycle()
+    val imageAnalysisInfo by viewModel.imageAnalysisInfo.collectAsStateWithLifecycle()
+    val opticalScanProgress by viewModel.opticalScanProgress.collectAsStateWithLifecycle()
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { viewModel.loadScopeImageUri(it) }
+    }
+
     // Dialog & Sheet States
     var showShortcutsDialog by remember { mutableStateOf(false) }
+    var showImageNoiseDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showSavePresetDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -381,7 +416,7 @@ fun MainGeneratorScreen(
                         onClick = { viewModel.toggleWhiteNoise() },
                         label = {
                             Text(
-                                text = if (isWhiteNoiseEnabled) "Noise: ${(whiteNoiseLevel * 100).toInt()}%" else "+ White Noise",
+                                text = if (isWhiteNoiseEnabled) "${noiseColor.displayName}: ${(whiteNoiseLevel * 100).toInt()}%" else "+ Noise Floor",
                                 fontSize = 11.sp,
                                 fontWeight = if (isWhiteNoiseEnabled) FontWeight.Bold else FontWeight.Normal
                             )
@@ -389,13 +424,61 @@ fun MainGeneratorScreen(
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Grain,
-                                contentDescription = "White Noise",
+                                contentDescription = "Noise Floor",
                                 modifier = Modifier.size(14.dp)
                             )
                         },
                         modifier = Modifier
                             .height(32.dp)
                             .testTag("quick_white_noise_chip")
+                    )
+                }
+
+                item {
+                    FilterChip(
+                        selected = isLayeringEnabled,
+                        onClick = { viewModel.toggleLayering() },
+                        label = {
+                            Text(
+                                text = if (isLayeringEnabled) "Chords: ${activeChordPreset.displayName}" else "+ Chords",
+                                fontSize = 11.sp,
+                                fontWeight = if (isLayeringEnabled) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Chords Layering",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("quick_chords_chip")
+                    )
+                }
+
+                item {
+                    FilterChip(
+                        selected = scopeBackgroundImage != null || isImageNoiseActive,
+                        onClick = { showImageNoiseDialog = true },
+                        label = {
+                            Text(
+                                text = if (scopeBackgroundImage != null) "Wallpaper: ${selectedImageName ?: "Active"}" else "+ Image Wallpaper",
+                                fontSize = 11.sp,
+                                fontWeight = if (scopeBackgroundImage != null) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Image Sonification",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("quick_image_noise_chip")
                     )
                 }
 
@@ -520,6 +603,11 @@ fun MainGeneratorScreen(
                                     leftCarrierFreq = leftCarrierFreq,
                                     rightCarrierFreq = rightCarrierFreq,
                                     isCollapsed = isScopeCollapsed,
+                                    backgroundImage = scopeBackgroundImage,
+                                    backgroundOpacity = scopeBackgroundOpacity,
+                                    isImageNoiseActive = isImageNoiseActive,
+                                    opticalScanProgress = opticalScanProgress,
+                                    onOpenImageNoiseDialog = { showImageNoiseDialog = true },
                                     onToggleCollapse = { isScopeCollapsed = !isScopeCollapsed }
                                 )
                             }
@@ -545,6 +633,35 @@ fun MainGeneratorScreen(
                                     onWaveformChange = { viewModel.setCarrierWave(it) },
                                     isFrequenciesLinked = isFrequenciesLinked,
                                     onToggleFrequencyLink = { viewModel.toggleFrequencyLink() }
+                                )
+                            }
+                            AppCardModule.LAYERING -> {
+                                HarmonicLayeringSection(
+                                    isLayeringEnabled = isLayeringEnabled,
+                                    activeChordPreset = activeChordPreset,
+                                    baseCarrierFreq = carrierFreq,
+                                    layer2Enabled = layer2Enabled,
+                                    layer2Freq = layer2Freq,
+                                    layer2Wave = layer2Wave,
+                                    layer2Gain = layer2Gain,
+                                    layer2Interval = layer2Interval,
+                                    layer3Enabled = layer3Enabled,
+                                    layer3Freq = layer3Freq,
+                                    layer3Wave = layer3Wave,
+                                    layer3Gain = layer3Gain,
+                                    layer3Interval = layer3Interval,
+                                    onToggleLayering = { viewModel.toggleLayering() },
+                                    onSelectChordPreset = { viewModel.selectChordPreset(it) },
+                                    onToggleLayer2 = { viewModel.setLayer2Enabled(it) },
+                                    onLayer2FreqChange = { viewModel.setLayer2Freq(it) },
+                                    onLayer2WaveChange = { viewModel.setLayer2Wave(it) },
+                                    onLayer2GainChange = { viewModel.setLayer2Gain(it) },
+                                    onLayer2IntervalChange = { viewModel.setLayer2Interval(it) },
+                                    onToggleLayer3 = { viewModel.setLayer3Enabled(it) },
+                                    onLayer3FreqChange = { viewModel.setLayer3Freq(it) },
+                                    onLayer3WaveChange = { viewModel.setLayer3Wave(it) },
+                                    onLayer3GainChange = { viewModel.setLayer3Gain(it) },
+                                    onLayer3IntervalChange = { viewModel.setLayer3Interval(it) }
                                 )
                             }
                             AppCardModule.BINAURAL -> {
@@ -589,6 +706,31 @@ fun MainGeneratorScreen(
         KeyboardShortcutsDialog(onDismiss = { showShortcutsDialog = false })
     }
 
+    if (showImageNoiseDialog) {
+        ImageNoiseDialog(
+            currentImage = scopeBackgroundImage,
+            imageTitle = selectedImageName,
+            imageAnalysisInfo = imageAnalysisInfo,
+            isImageNoiseActive = isImageNoiseActive,
+            imageNoiseDepth = imageNoiseDepth,
+            imageScanSpeedHz = imageScanSpeedHz,
+            scopeBackgroundOpacity = scopeBackgroundOpacity,
+            isWhiteNoiseEnabled = isWhiteNoiseEnabled,
+            onPickImage = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onToggleImageNoise = { viewModel.setImageNoiseActive(it) },
+            onDepthChange = { viewModel.setImageNoiseDepth(it) },
+            onScanSpeedChange = { viewModel.setImageScanSpeedHz(it) },
+            onOpacityChange = { viewModel.setScopeBackgroundOpacity(it) },
+            onSelectPreset = { viewModel.loadPresetTexture(it) },
+            onClearImage = { viewModel.clearScopeImage() },
+            onDismiss = { showImageNoiseDialog = false }
+        )
+    }
+
     if (showExportDialog) {
         WavExportDialog(
             carrierFreq = carrierFreq,
@@ -628,12 +770,16 @@ fun MainGeneratorScreen(
             bitDepth = bitDepth,
             isWhiteNoiseEnabled = isWhiteNoiseEnabled,
             whiteNoiseLevel = whiteNoiseLevel,
+            noiseColor = noiseColor,
+            isDuckingEnabled = isDuckingEnabled,
             onToggleDarkMode = { viewModel.toggleDarkMode(it) },
             onSelectScopeTheme = { viewModel.setScopeTheme(it) },
             onSelectSampleRate = { viewModel.setSampleRate(it) },
             onSelectBitDepth = { viewModel.setBitDepth(it) },
             onToggleWhiteNoise = { viewModel.setWhiteNoiseEnabled(it) },
             onWhiteNoiseLevelChange = { viewModel.setWhiteNoiseLevel(it) },
+            onSelectNoiseColor = { viewModel.setNoiseColor(it) },
+            onToggleDucking = { viewModel.setDuckingEnabled(it) },
             onDismiss = { showSettingsDialog = false }
         )
     }
