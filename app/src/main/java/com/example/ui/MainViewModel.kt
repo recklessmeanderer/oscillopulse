@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.AudioEngine
+import com.example.audio.AudioPlaybackService
 import com.example.audio.WavExporter
 import com.example.data.AppDatabase
 import com.example.data.PresetEntity
@@ -28,7 +29,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val recordingDao = db.recordingDao()
     private val layoutPrefs = application.getSharedPreferences("oscillopulse_layout_prefs", Context.MODE_PRIVATE)
 
-    val audioEngine = AudioEngine(application.filesDir)
+    val audioEngine = AudioEngine.getInstance(application)
 
     // Movable Studio Cards Order State
     private val _cardOrder = MutableStateFlow(loadSavedCardOrder())
@@ -148,6 +149,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Check if database needs factory presets population or deduplication
         viewModelScope.launch(Dispatchers.IO) {
             AppDatabase.populateFactoryPresets(presetDao)
+        }
+
+        // Keep foreground service and sticky notification in sync with playback
+        viewModelScope.launch {
+            audioEngine.isPlaying.collectLatest { playing ->
+                if (playing) {
+                    AudioPlaybackService.start(application)
+                }
+            }
         }
     }
 
@@ -392,6 +402,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePlayback() {
         audioEngine.togglePlayback()
+        if (audioEngine.isPlaying.value) {
+            AudioPlaybackService.start(getApplication())
+        }
     }
 
     fun toggleRecording() {

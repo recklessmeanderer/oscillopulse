@@ -18,6 +18,34 @@ import kotlin.math.max
 
 class AudioEngine(private val filesDir: File) {
 
+    companion object {
+        @Volatile
+        private var instance: AudioEngine? = null
+
+        fun getInstance(context: android.content.Context): AudioEngine {
+            return instance ?: synchronized(this) {
+                instance ?: AudioEngine(context.applicationContext.filesDir).also { instance = it }
+            }
+        }
+
+        fun getInstance(filesDir: File): AudioEngine {
+            return instance ?: synchronized(this) {
+                instance ?: AudioEngine(filesDir).also { instance = it }
+            }
+        }
+    }
+
+    fun getSummaryDescription(): String {
+        return if (isBinauralEnabled) {
+            val beat = kotlin.math.abs(rightCarrierFreq - leftCarrierFreq)
+            "Binaural ${leftCarrierFreq.toInt()}Hz / ${rightCarrierFreq.toInt()}Hz (${beat.toInt()}Hz beat)"
+        } else {
+            val carrierDesc = "${carrierFreq.toInt()} Hz ${carrierWave.name.lowercase().replaceFirstChar { it.uppercase() }}"
+            val modDesc = "${modFreq.toInt()} Hz ${modMode.displayName}"
+            "$carrierDesc • $modDesc"
+        }
+    }
+
     // Volatile parameters for real-time thread safety
     @Volatile var carrierFreq: Float = 432.0f
         set(value) { field = value.coerceIn(1.0f, 1000.0f) }
