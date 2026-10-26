@@ -11,25 +11,29 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class ImageSonificationTest {
 
     @Test
-    fun `generate all preset textures and verify dimensions`() {
+    fun `generate and load all preset textures including Ra in the Abyss`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
         TexturePreset.values().forEach { preset ->
-            val bitmap = ImageSonificationHelper.generatePresetTexture(preset, width = 320, height = 180)
+            val bitmap = ImageSonificationHelper.getPresetBitmap(context, preset)
             assertNotNull("Bitmap should not be null for preset ${preset.name}", bitmap)
-            assertEquals(320, bitmap.width)
-            assertEquals(180, bitmap.height)
+            assertTrue("Width should be > 0", bitmap.width > 0)
+            assertTrue("Height should be > 0", bitmap.height > 0)
 
             val analysis = ImageSonificationHelper.extractAudioProfile(bitmap, profileSize = 256)
             assertEquals(256, analysis.audioProfile.size)
             assertTrue("Average luminance should be non-negative", analysis.avgLuminance >= 0f)
 
-            // Verify audio profile values stay normalized between -1.0 and +1.0
+            // Verify audio profile values stay normalized between 0.0 and 1.0
             for (v in analysis.audioProfile) {
-                assertTrue("Profile sample should be >= -1.0f", v >= -1.0f)
+                assertTrue("Profile sample should be >= 0.0f", v >= 0.0f)
                 assertTrue("Profile sample should be <= 1.0f", v <= 1.0f)
             }
         }

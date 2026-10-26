@@ -5,11 +5,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.net.Uri
+import android.os.Build
 import com.example.model.NoiseColor
 import java.io.File
 import java.io.FileOutputStream
@@ -22,7 +24,14 @@ data class ImageAnalysisResult(
     val warmCoolBalance: Float // > 1.0 = warm/brown, < 0.9 = cool/white, ~1.0 = pink
 )
 
-enum class TexturePreset(val title: String, val subtitle: String, val noiseColor: NoiseColor) {
+enum class TexturePreset(
+    val title: String,
+    val subtitle: String,
+    val noiseColor: NoiseColor,
+    val isAsset: Boolean = false,
+    val assetFileName: String? = null
+) {
+    RA_ABYSS("Ra in the Abyss", "Ancient papyrus & black sun abyss (Featured Art)", NoiseColor.BROWN, true, "ra_abyss_cedd8734.jpg"),
     COSMIC_NEBULA("Cosmic Nebula", "Deep space starfield & ultraviolet gas", NoiseColor.WHITE),
     OCEAN_SURF("Ocean Surf", "Rhythmic rolling waves & sea spray", NoiseColor.BROWN),
     FOREST_CANOPY("Forest Canopy", "Sunlight filtering through pine trees", NoiseColor.PINK),
@@ -33,14 +42,14 @@ enum class TexturePreset(val title: String, val subtitle: String, val noiseColor
 object ImageSonificationHelper {
 
     /**
-     * Loads a downsampled Bitmap safely from a content Uri using the Android Photo Picker.
+     * Decodes a downsampled ARGB_8888 software Bitmap safely from a raw ByteArray.
+     * Prevents hardware bitmap allocation so pixel access and rendering never fail.
      */
-    fun loadBitmapFromUri(context: Context, uri: Uri, maxDimension: Int = 800): Bitmap? {
+    fun decodeBitmapFromBytes(bytes: ByteArray, maxDimension: Int = 800): Bitmap? {
         return try {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, options)
-            } ?: return null
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
             var sampleSize = 1
             while (options.outWidth / sampleSize > maxDimension || options.outHeight / sampleSize > maxDimension) {
@@ -52,13 +61,88 @@ object ImageSonificationHelper {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
 
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, decodeOptions)
+            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions) ?: return null
+            if (decoded.config != Bitmap.Config.ARGB_8888) {
+                val converted = decoded.copy(Bitmap.Config.ARGB_8888, false)
+                if (converted != null) {
+                    decoded.recycle()
+                    return converted
+                }
             }
-        } catch (e: Exception) {
+            decoded
+        } catch (e: Throwable) {
             e.printStackTrace()
             null
         }
+    }
+
+    /**
+     * Loads a downsampled Bitmap safely from a content or file Uri.
+     * Uses single-pass stream reading and ImageDecoder on Android P+ to prevent
+     * stream-closure / permission-exhaustion failures common with Android Photo Picker.
+     */
+    fun loadBitmapFromUri(context: Context, uri: Uri, maxDimension: Int = 800): Bitmap? {
+        // 1. On Android P+, attempt modern ImageDecoder with ALLOCATOR_SOFTWARE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                val source = ImageDecoder.createSource(context.contentResolver, uri)
+                val decoded = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    val w = info.size.width
+                    val h = info.size.height
+                    if (w > maxDimension || h > maxDimension) {
+                        val ratio = kotlin.math.max(w.toFloat() / maxDimension, h.toFloat() / maxDimension)
+                        val targetW = (w / ratio).toInt().coerceAtLeast(1)
+                        val targetH = (h / ratio).toInt().coerceAtLeast(1)
+                        decoder.setTargetSize(targetW, targetH)
+                    }
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                }
+                val softwareBmp = decoded.copy(Bitmap.Config.ARGB_8888, false)
+                if (softwareBmp != null) return softwareBmp
+            } catch (e: Throwable) {
+                // Fallback to byte array decode below
+            }
+        }
+
+        // 2. Single-pass stream read: read all bytes once so the stream is never opened twice
+        val bytes = try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } catch (e: Throwable) {
+            null
+        } ?: try {
+            uri.path?.let { p ->
+                val f = File(p)
+                if (f.exists()) f.readBytes() else null
+            }
+        } catch (e: Throwable) {
+            null
+        } ?: return null
+
+        return decodeBitmapFromBytes(bytes, maxDimension)
+    }
+
+    /**
+     * Loads an image asset bundled inside app/src/main/assets safely.
+     */
+    fun loadBitmapFromAsset(context: Context, assetName: String, maxDimension: Int = 800): Bitmap? {
+        return try {
+            val bytes = context.assets.open(assetName).use { it.readBytes() }
+            decodeBitmapFromBytes(bytes, maxDimension)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Returns the bitmap for a TexturePreset (either from bundled assets or procedurally generated).
+     */
+    fun getPresetBitmap(context: Context, preset: TexturePreset): Bitmap {
+        if (preset.isAsset && preset.assetFileName != null) {
+            val assetBitmap = loadBitmapFromAsset(context, preset.assetFileName)
+            if (assetBitmap != null) return assetBitmap
+        }
+        return generatePresetTexture(preset)
     }
 
     /**
@@ -66,8 +150,15 @@ object ImageSonificationHelper {
      * by scanning image columns left-to-right like an optical sound film track.
      */
     fun extractAudioProfile(bitmap: Bitmap, profileSize: Int = 2048): ImageAnalysisResult {
-        val w = bitmap.width
-        val h = bitmap.height
+        // Guarantee software ARGB_8888 format
+        val safeBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
+        } else {
+            bitmap
+        }
+
+        val w = safeBitmap.width
+        val h = safeBitmap.height
         val profile = FloatArray(profileSize)
 
         var totalR = 0.0
@@ -82,7 +173,7 @@ object ImageSonificationHelper {
 
             for (v in 0 until vSteps) {
                 val row = ((v.toFloat() / vSteps) * h).toInt().coerceIn(0, h - 1)
-                val pixel = bitmap.getPixel(col, row)
+                val pixel = safeBitmap.getPixel(col, row)
                 val r = (pixel shr 16) and 0xFF
                 val g = (pixel shr 8) and 0xFF
                 val b = pixel and 0xFF
@@ -98,9 +189,9 @@ object ImageSonificationHelper {
                 }
             }
 
-            // Normalize column luminance to -1.0 .. +1.0 AC audio range
-            val normLum = (colLum / (vSteps * 255.0)).toFloat()
-            profile[i] = (normLum * 2.0f) - 1.0f
+            // Normalize column luminance to 0.0 .. 1.0 (unipolar optical depth)
+            val normLum = (colLum / (vSteps * 255.0)).toFloat().coerceIn(0f, 1f)
+            profile[i] = normLum
         }
 
         val samplePoints = (profileSize / 16) * vSteps
@@ -112,8 +203,8 @@ object ImageSonificationHelper {
         val warmCoolRatio = if (avgB > 0f) (avgR + 1f) / (avgB + 1f) else 1.0f
 
         val recommendedColor = when {
-            avgLum > 175f || avgB > avgR * 1.2f -> NoiseColor.WHITE
-            warmCoolRatio > 1.25f || avgLum < 85f -> NoiseColor.BROWN
+            avgLum > 175f || avgB > avgR * 1.25f -> NoiseColor.WHITE
+            warmCoolRatio > 1.15f || avgLum < 110f -> NoiseColor.BROWN
             else -> NoiseColor.PINK
         }
 
@@ -134,6 +225,27 @@ object ImageSonificationHelper {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
         when (preset) {
+            TexturePreset.RA_ABYSS -> {
+                // Procedural papyrus texture with black abyss sun fallback if asset is missing
+                paint.shader = LinearGradient(
+                    0f, 0f, 0f, height.toFloat(),
+                    intArrayOf(Color.rgb(205, 160, 105), Color.rgb(230, 190, 135), Color.rgb(190, 145, 95)),
+                    null, Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+                // Black Sun
+                paint.shader = null
+                paint.color = Color.BLACK
+                canvas.drawCircle(width * 0.5f, height * 0.32f, height * 0.22f, paint)
+
+                // Water horizon ripples
+                paint.color = Color.rgb(40, 25, 15)
+                paint.strokeWidth = 2f
+                for (y in (height * 0.55f).toInt() until height step 8) {
+                    canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), paint)
+                }
+            }
             TexturePreset.COSMIC_NEBULA -> {
                 // Deep space gradient
                 paint.shader = LinearGradient(

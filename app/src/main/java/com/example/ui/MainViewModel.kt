@@ -106,7 +106,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _imageScanSpeedHz = MutableStateFlow(1.0f)
     val imageScanSpeedHz = _imageScanSpeedHz.asStateFlow()
 
-    private val _selectedImageName = MutableStateFlow<String?>("Cosmic Nebula")
+    private val _selectedImageName = MutableStateFlow<String?>("Ra in the Abyss")
     val selectedImageName = _selectedImageName.asStateFlow()
 
     private val _imageAnalysisInfo = MutableStateFlow<String?>(null)
@@ -235,10 +235,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Preload default procedural cosmic texture for instant out-of-the-box visual & audio richness
+        // Export bundled featured image to device Pictures so Photo Picker finds it
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
+                if (picturesDir != null) {
+                    if (!picturesDir.exists()) picturesDir.mkdirs()
+                    val destFile = File(picturesDir, "ra_abyss.jpg")
+                    if (!destFile.exists()) {
+                        application.assets.open("ra_abyss_cedd8734.jpg").use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        val mediaScanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+                        mediaScanIntent.data = Uri.fromFile(destFile)
+                        application.sendBroadcast(mediaScanIntent)
+                    }
+                }
+            } catch (e: Throwable) {
+                // Safe to ignore if permissions or environment differ
+            }
+        }
+
+        // Preload default featured Ra in the Abyss texture
         viewModelScope.launch(Dispatchers.Default) {
-            val defaultTexture = ImageSonificationHelper.generatePresetTexture(TexturePreset.COSMIC_NEBULA)
-            applyAnalyzedImage(defaultTexture, TexturePreset.COSMIC_NEBULA.title)
+            val featuredTexture = ImageSonificationHelper.getPresetBitmap(getApplication(), TexturePreset.RA_ABYSS)
+            applyAnalyzedImage(featuredTexture, TexturePreset.RA_ABYSS.title)
         }
     }
 
@@ -421,25 +444,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Optical Image Sonification & Scope Wallpaper Controls
     fun loadScopeImageUri(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            val bitmap = ImageSonificationHelper.loadBitmapFromUri(getApplication(), uri)
-            if (bitmap != null) {
-                applyAnalyzedImage(bitmap, "Custom Photo")
-                _userFeedbackMessage.value = "Image wallpaper loaded & sonified"
-            } else {
-                _userFeedbackMessage.value = "Could not decode selected image"
+            try {
+                val bitmap = ImageSonificationHelper.loadBitmapFromUri(getApplication(), uri)
+                if (bitmap != null) {
+                    applyAnalyzedImage(bitmap, "Custom Photo")
+                    _userFeedbackMessage.value = "Image wallpaper loaded & sonified"
+                } else {
+                    _userFeedbackMessage.value = "Could not decode selected image"
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                _userFeedbackMessage.value = "Failed to load image: ${e.message}"
             }
         }
     }
 
     fun loadPresetTexture(preset: TexturePreset) {
         viewModelScope.launch(Dispatchers.Default) {
-            val bitmap = ImageSonificationHelper.generatePresetTexture(preset)
-            applyAnalyzedImage(bitmap, preset.title)
-            setNoiseColor(preset.noiseColor)
-            if (!_isWhiteNoiseEnabled.value) {
-                setWhiteNoiseEnabled(true)
+            try {
+                val bitmap = ImageSonificationHelper.getPresetBitmap(getApplication(), preset)
+                applyAnalyzedImage(bitmap, preset.title)
+                setNoiseColor(preset.noiseColor)
+                if (!_isWhiteNoiseEnabled.value) {
+                    setWhiteNoiseEnabled(true)
+                }
+                _userFeedbackMessage.value = "${preset.title} loaded (${preset.noiseColor.displayName} noise)"
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                _userFeedbackMessage.value = "Error loading preset: ${e.message}"
             }
-            _userFeedbackMessage.value = "${preset.title} texture loaded (${preset.noiseColor.displayName} noise)"
         }
     }
 

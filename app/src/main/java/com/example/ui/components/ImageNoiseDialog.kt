@@ -211,7 +211,7 @@ fun ImageNoiseDialog(
                 // Preset Textures Section
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "PROCEDURAL TEXTURES",
+                        text = "FEATURED & PROCEDURAL TEXTURES",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp,
@@ -219,12 +219,19 @@ fun ImageNoiseDialog(
                     )
 
                     TexturePreset.values().forEach { preset ->
+                        val isCurrent = imageTitle == preset.title
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF0F172A),
+                            color = if (isCurrent) Color(0xFF1E293B) else Color(0xFF0F172A),
                             border = CardDefaults.outlinedCardBorder().copy(
-                                brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF1E293B)),
-                                width = 1.dp
+                                brush = androidx.compose.ui.graphics.SolidColor(
+                                    when {
+                                        isCurrent -> MaterialTheme.colorScheme.primary
+                                        preset.isAsset -> Color(0xFFD97706)
+                                        else -> Color(0xFF1E293B)
+                                    }
+                                ),
+                                width = if (isCurrent || preset.isAsset) 1.5.dp else 1.dp
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -239,12 +246,39 @@ fun ImageNoiseDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = preset.title,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = preset.title,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color.White
+                                        )
+                                        if (preset.isAsset) {
+                                            Surface(
+                                                color = Color(0xFF78350F),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Text(
+                                                    text = "FEATURED",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFFDE68A),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        if (isCurrent) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Active",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
+                                    }
                                     Text(
                                         text = preset.subtitle,
                                         fontSize = 10.sp,
