@@ -30,18 +30,25 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses & Install API 36
+      - name: Accept Android SDK Licenses & Prepare Environment
         run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          printf "24333f8a63cbd8224e727e4f45f0a94ac4266ff8\n84831b9409646a918e30573bab4c9c91346d8abd\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63cbd8224e727e4f45f0a94ac4266ff8\n" > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf "84831b9409646a918e30573bab4c9c91346d8abd\n" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+
+          # Automatically install platforms;android-36 if sdkmanager is present
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" || true
+          elif which sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses || true
+            sdkmanager "platform-tools" "platforms;android-36" || true
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
       - name: Grant execute permission and normalize line endings for gradlew
         run: |
@@ -63,11 +70,13 @@ jobs:
               base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode -i debug.keystore.base64 > debug.keystore 2>/dev/null || true
               echo "Decoded debug.keystore from base64."
             fi
-            if [ ! -s debug.keystore ]; then
-              echo "Generating standard debug.keystore fallback..."
-              rm -f debug.keystore
-              keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            fi
+          fi
+
+          # 3. Generate fallback debug keystore if still missing
+          if [ ! -s debug.keystore ]; then
+            echo "Generating standard debug.keystore fallback..."
+            rm -f debug.keystore
+            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
       - name: Run Unit Tests

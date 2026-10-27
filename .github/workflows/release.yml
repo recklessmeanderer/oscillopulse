@@ -47,13 +47,22 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses & Install API 36
+      - name: Accept Android SDK Licenses & Prepare Environment
         run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          printf "24333f8a63cbd8224e727e4f45f0a94ac4266ff8\n84831b9409646a918e30573bab4c9c91346d8abd\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63cbd8224e727e4f45f0a94ac4266ff8\n" > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf "84831b9409646a918e30573bab4c9c91346d8abd\n" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+
+          # Automatically install platforms;android-36 if sdkmanager is present
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" || true
+          elif which sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses || true
+            sdkmanager "platform-tools" "platforms;android-36" || true
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -78,16 +87,18 @@ jobs:
           if [ ! -s debug.keystore ]; then
             if [ -f debug.keystore.base64 ] && [ -s debug.keystore.base64 ]; then
               base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode -i debug.keystore.base64 > debug.keystore 2>/dev/null || true
-              echo "Decoded debug.keystore from debug.keystore.base64."
-            fi
-            if [ ! -s debug.keystore ]; then
-              echo "Generating standard debug.keystore fallback..."
-              rm -f debug.keystore
-              keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+              echo "Decoded debug.keystore from base64."
             fi
           fi
 
-          # 3. Decode custom release keystore if provided in repository secrets
+          # 3. Generate fallback debug keystore if still missing
+          if [ ! -s debug.keystore ]; then
+            echo "Generating standard debug.keystore fallback..."
+            rm -f debug.keystore
+            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # 4. Decode custom release keystore if provided in repository secrets
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks 2>/dev/null || echo "$KEYSTORE_BASE64" | base64 --decode -i > my-upload-key.jks 2>/dev/null || true
             echo "Decoded release keystore (my-upload-key.jks) from secrets."
@@ -148,41 +159,25 @@ jobs:
           name: OscilloPulse-APKs
           path: dist/*.apk
           if-no-files-found: error
+          overwrite: true
           retention-days: 30
 
-      - name: Attach APK to GitHub Release (action-gh-release)
-        id: gh_release
-        continue-on-error: true
+      - name: Attach APK to GitHub Release
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
-          name: ${{ github.event.release.name || github.event.release.tag_name || github.ref_name }}
-          files: dist/*.apk
-          generate_release_notes: true
-          overwrite_files: true
-          fail_on_unmatched_files: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Fallback Release Upload via GitHub CLI
-        if: (github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')) && steps.gh_release.outcome != 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="${{ github.event.release.tag_name || github.ref_name }}"
-          echo "Attempting fallback release publish via gh CLI for tag: $TAG_NAME"
+          echo "Publishing APK assets to release tag: $TAG_NAME"
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release '$TAG_NAME' exists. Uploading APK assets with --clobber..."
+            echo "Release '$TAG_NAME' exists. Uploading APK assets..."
             gh release upload "$TAG_NAME" dist/*.apk --clobber
           else
             echo "Release '$TAG_NAME' does not exist yet. Creating release and attaching APK assets..."
             gh release create "$TAG_NAME" dist/*.apk \
-              --title "Release $TAG_NAME" \
+              --title "${{ github.event.release.name || github.ref_name }}" \
               --generate-notes
           fi
-          echo "Release APK assets published successfully via gh CLI!"
+          echo "Release APK published successfully!"
