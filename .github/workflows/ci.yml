@@ -30,25 +30,43 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses & Install API 36
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Grant execute permission and normalize line endings for gradlew
+        run: |
+          sed -i -e 's/\r$//' gradlew || true
+          chmod +x gradlew
 
       - name: Prepare Build Environment & Keystore
         run: |
-          # 1. Ensure .env exists so secrets plugin does not fail
-          touch .env
+          # 1. Ensure .env exists from template so secrets plugin does not fail
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
 
           # 2. Ensure debug keystore is present
-          if [ ! -f debug.keystore ]; then
-            if [ -f debug.keystore.base64 ]; then
-              base64 -d debug.keystore.base64 > debug.keystore
+          if [ ! -s debug.keystore ]; then
+            if [ -f debug.keystore.base64 ] && [ -s debug.keystore.base64 ]; then
+              base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode -i debug.keystore.base64 > debug.keystore 2>/dev/null || true
               echo "Decoded debug.keystore from base64."
-            else
+            fi
+            if [ ! -s debug.keystore ]; then
               echo "Generating standard debug.keystore fallback..."
-              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+              rm -f debug.keystore
+              keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             fi
           fi
 
