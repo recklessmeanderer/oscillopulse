@@ -49,4 +49,30 @@ class ImageSonificationTest {
         val oceanAnalysis = ImageSonificationHelper.extractAudioProfile(oceanBitmap, 128)
         assertNotNull(oceanAnalysis.recommendedNoiseColor)
     }
+
+    @Test
+    fun `vertical waterfall scanning produces normalized audio profile cascading top to bottom`() {
+        val bitmap = ImageSonificationHelper.generatePresetTexture(TexturePreset.RA_ABYSS, 200, 100)
+        val waterfallAnalysis = ImageSonificationHelper.extractAudioProfile(
+            bitmap = bitmap,
+            profileSize = 128,
+            direction = com.example.model.ScanDirection.VERTICAL_WATERFALL
+        )
+        val horizontalAnalysis = ImageSonificationHelper.extractAudioProfile(
+            bitmap = bitmap,
+            profileSize = 128,
+            direction = com.example.model.ScanDirection.HORIZONTAL
+        )
+
+        assertEquals(128, waterfallAnalysis.audioProfile.size)
+        assertEquals(128, horizontalAnalysis.audioProfile.size)
+
+        for (sample in waterfallAnalysis.audioProfile) {
+            assertTrue("Sample must be >= 0.0f", sample >= 0.0f)
+            assertTrue("Sample must be <= 1.0f", sample <= 1.0f)
+        }
+
+        // Verify average luminance is valid non-negative value
+        assertTrue("Waterfall average luminance should be non-negative", waterfallAnalysis.avgLuminance >= 0f)
+    }
 }

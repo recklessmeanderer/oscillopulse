@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.TexturePreset
+import com.example.model.ScanDirection
 
 @Composable
 fun ImageNoiseDialog(
@@ -41,11 +42,13 @@ fun ImageNoiseDialog(
     imageScanSpeedHz: Float,
     scopeBackgroundOpacity: Float,
     isWhiteNoiseEnabled: Boolean,
+    scanDirection: ScanDirection = ScanDirection.VERTICAL_WATERFALL,
     onPickImage: () -> Unit,
     onToggleImageNoise: (Boolean) -> Unit,
     onDepthChange: (Float) -> Unit,
     onScanSpeedChange: (Float) -> Unit,
     onOpacityChange: (Float) -> Unit,
+    onScanDirectionChange: ((ScanDirection) -> Unit)? = null,
     onSelectPreset: (TexturePreset) -> Unit,
     onClearImage: () -> Unit,
     onDismiss: () -> Unit
@@ -318,7 +321,11 @@ fun ImageNoiseDialog(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Modulate noise floor with column luminance",
+                                text = if (scanDirection == ScanDirection.VERTICAL_WATERFALL) {
+                                    "Modulate noise floor with vertical waterfall luminance"
+                                } else {
+                                    "Modulate noise floor with column luminance"
+                                },
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -328,6 +335,109 @@ fun ImageNoiseDialog(
                             onCheckedChange = onToggleImageNoise,
                             modifier = Modifier.testTag("image_noise_switch")
                         )
+                    }
+
+                    // Scan Direction Selector (Vertical Waterfall vs Horizontal)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "SCAN DIRECTION & PATTERN",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Vertical Waterfall option (Recommended & Active default)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (scanDirection == ScanDirection.VERTICAL_WATERFALL) Color(0xFF1E293B) else Color(0xFF0F172A),
+                                border = CardDefaults.outlinedCardBorder().copy(
+                                    brush = androidx.compose.ui.graphics.SolidColor(
+                                        if (scanDirection == ScanDirection.VERTICAL_WATERFALL) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)
+                                    ),
+                                    width = if (scanDirection == ScanDirection.VERTICAL_WATERFALL) 1.5.dp else 1.dp
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onScanDirectionChange?.invoke(ScanDirection.VERTICAL_WATERFALL) }
+                                    .testTag("scan_direction_waterfall")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.South,
+                                            contentDescription = null,
+                                            tint = if (scanDirection == ScanDirection.VERTICAL_WATERFALL) MaterialTheme.colorScheme.primary else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Waterfall",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                    Text(
+                                        text = "Top → Down",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
+
+                            // Horizontal Scan option
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (scanDirection == ScanDirection.HORIZONTAL) Color(0xFF1E293B) else Color(0xFF0F172A),
+                                border = CardDefaults.outlinedCardBorder().copy(
+                                    brush = androidx.compose.ui.graphics.SolidColor(
+                                        if (scanDirection == ScanDirection.HORIZONTAL) MaterialTheme.colorScheme.primary else Color(0xFF1E293B)
+                                    ),
+                                    width = if (scanDirection == ScanDirection.HORIZONTAL) 1.5.dp else 1.dp
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onScanDirectionChange?.invoke(ScanDirection.HORIZONTAL) }
+                                    .testTag("scan_direction_horizontal")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.East,
+                                            contentDescription = null,
+                                            tint = if (scanDirection == ScanDirection.HORIZONTAL) MaterialTheme.colorScheme.primary else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Horizontal",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                    Text(
+                                        text = "Left → Right",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     if (!isWhiteNoiseEnabled && isImageNoiseActive) {

@@ -100,6 +100,7 @@ fun MainGeneratorScreen(
     val selectedImageName by viewModel.selectedImageName.collectAsStateWithLifecycle()
     val imageAnalysisInfo by viewModel.imageAnalysisInfo.collectAsStateWithLifecycle()
     val opticalScanProgress by viewModel.opticalScanProgress.collectAsStateWithLifecycle()
+    val scanDirection by viewModel.scanDirection.collectAsStateWithLifecycle()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -607,6 +608,7 @@ fun MainGeneratorScreen(
                                     backgroundOpacity = scopeBackgroundOpacity,
                                     isImageNoiseActive = isImageNoiseActive,
                                     opticalScanProgress = opticalScanProgress,
+                                    scanDirection = scanDirection,
                                     onOpenImageNoiseDialog = { showImageNoiseDialog = true },
                                     onToggleCollapse = { isScopeCollapsed = !isScopeCollapsed }
                                 )
@@ -716,6 +718,7 @@ fun MainGeneratorScreen(
             imageScanSpeedHz = imageScanSpeedHz,
             scopeBackgroundOpacity = scopeBackgroundOpacity,
             isWhiteNoiseEnabled = isWhiteNoiseEnabled,
+            scanDirection = scanDirection,
             onPickImage = {
                 photoPickerLauncher.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -725,6 +728,7 @@ fun MainGeneratorScreen(
             onDepthChange = { viewModel.setImageNoiseDepth(it) },
             onScanSpeedChange = { viewModel.setImageScanSpeedHz(it) },
             onOpacityChange = { viewModel.setScopeBackgroundOpacity(it) },
+            onScanDirectionChange = { viewModel.setScanDirection(it) },
             onSelectPreset = { viewModel.loadPresetTexture(it) },
             onClearImage = { viewModel.clearScopeImage() },
             onDismiss = { showImageNoiseDialog = false }
@@ -754,6 +758,10 @@ fun MainGeneratorScreen(
             carrierWaveName = carrierWave.displayName,
             modFreq = modFreq,
             modWaveName = modWave.displayName,
+            modModeName = modMode.displayName,
+            isBinaural = isBinauralEnabled,
+            leftCarrierFreq = leftCarrierFreq,
+            rightCarrierFreq = rightCarrierFreq,
             onDismiss = { showSavePresetDialog = false },
             onSave = { name, desc ->
                 viewModel.savePreset(name, desc)

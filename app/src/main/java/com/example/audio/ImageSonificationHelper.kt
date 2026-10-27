@@ -13,6 +13,7 @@ import android.graphics.Shader
 import android.net.Uri
 import android.os.Build
 import com.example.model.NoiseColor
+import com.example.model.ScanDirection
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.sin
@@ -147,9 +148,13 @@ object ImageSonificationHelper {
 
     /**
      * Extracts an optical audio waveform profile (luminance and chromatic balance)
-     * by scanning image columns left-to-right like an optical sound film track.
+     * by scanning image slices either as a top-to-bottom vertical waterfall or left-to-right optical sound track.
      */
-    fun extractAudioProfile(bitmap: Bitmap, profileSize: Int = 2048): ImageAnalysisResult {
+    fun extractAudioProfile(
+        bitmap: Bitmap,
+        profileSize: Int = 2048,
+        direction: ScanDirection = ScanDirection.VERTICAL_WATERFALL
+    ): ImageAnalysisResult {
         // Guarantee software ARGB_8888 format
         val safeBitmap = if (bitmap.config != Bitmap.Config.ARGB_8888) {
             bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
@@ -165,36 +170,69 @@ object ImageSonificationHelper {
         var totalG = 0.0
         var totalB = 0.0
         var totalLum = 0.0
-        val vSteps = 16
 
-        for (i in 0 until profileSize) {
-            val col = ((i.toFloat() / profileSize) * w).toInt().coerceIn(0, w - 1)
-            var colLum = 0.0
+        if (direction == ScanDirection.VERTICAL_WATERFALL) {
+            // Vertical Waterfall: scan row-by-row cascading from top to bottom (y: 0 -> h-1)
+            val hSteps = 32
+            for (i in 0 until profileSize) {
+                val row = ((i.toFloat() / profileSize) * h).toInt().coerceIn(0, h - 1)
+                var rowLum = 0.0
 
-            for (v in 0 until vSteps) {
-                val row = ((v.toFloat() / vSteps) * h).toInt().coerceIn(0, h - 1)
-                val pixel = safeBitmap.getPixel(col, row)
-                val r = (pixel shr 16) and 0xFF
-                val g = (pixel shr 8) and 0xFF
-                val b = pixel and 0xFF
+                for (s in 0 until hSteps) {
+                    val col = ((s.toFloat() / hSteps) * w).toInt().coerceIn(0, w - 1)
+                    val pixel = safeBitmap.getPixel(col, row)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
 
-                val lum = 0.299 * r + 0.587 * g + 0.114 * b
-                colLum += lum
+                    val lum = 0.299 * r + 0.587 * g + 0.114 * b
+                    rowLum += lum
 
-                if (i % 16 == 0) {
-                    totalR += r
-                    totalG += g
-                    totalB += b
-                    totalLum += lum
+                    if (i % 16 == 0) {
+                        totalR += r
+                        totalG += g
+                        totalB += b
+                        totalLum += lum
+                    }
                 }
-            }
 
-            // Normalize column luminance to 0.0 .. 1.0 (unipolar optical depth)
-            val normLum = (colLum / (vSteps * 255.0)).toFloat().coerceIn(0f, 1f)
-            profile[i] = normLum
+                // Normalize row luminance to 0.0 .. 1.0 (waterfall depth)
+                val normLum = (rowLum / (hSteps * 255.0)).toFloat().coerceIn(0f, 1f)
+                profile[i] = normLum
+            }
+        } else {
+            // Horizontal Scan: scan column-by-column left-to-right (x: 0 -> w-1)
+            val vSteps = 16
+            for (i in 0 until profileSize) {
+                val col = ((i.toFloat() / profileSize) * w).toInt().coerceIn(0, w - 1)
+                var colLum = 0.0
+
+                for (v in 0 until vSteps) {
+                    val row = ((v.toFloat() / vSteps) * h).toInt().coerceIn(0, h - 1)
+                    val pixel = safeBitmap.getPixel(col, row)
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+
+                    val lum = 0.299 * r + 0.587 * g + 0.114 * b
+                    colLum += lum
+
+                    if (i % 16 == 0) {
+                        totalR += r
+                        totalG += g
+                        totalB += b
+                        totalLum += lum
+                    }
+                }
+
+                // Normalize column luminance to 0.0 .. 1.0 (unipolar optical depth)
+                val normLum = (colLum / (vSteps * 255.0)).toFloat().coerceIn(0f, 1f)
+                profile[i] = normLum
+            }
         }
 
-        val samplePoints = (profileSize / 16) * vSteps
+        val stepFactor = if (direction == ScanDirection.VERTICAL_WATERFALL) 32 else 16
+        val samplePoints = ((profileSize / 16) * stepFactor).coerceAtLeast(1)
         val avgR = (totalR / samplePoints).toFloat()
         val avgG = (totalG / samplePoints).toFloat()
         val avgB = (totalB / samplePoints).toFloat()

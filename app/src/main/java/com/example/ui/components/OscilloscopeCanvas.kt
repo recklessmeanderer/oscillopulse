@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.ScanDirection
 import com.example.model.ScopeTheme
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -48,6 +49,7 @@ fun OscilloscopeCanvas(
     backgroundOpacity: Float = 0.35f,
     isImageNoiseActive: Boolean = false,
     opticalScanProgress: Float = 0f,
+    scanDirection: ScanDirection = ScanDirection.VERTICAL_WATERFALL,
     onOpenImageNoiseDialog: (() -> Unit)? = null,
     onToggleCollapse: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -289,36 +291,105 @@ fun OscilloscopeCanvas(
                                 drawRect(Color(0xFF030712).copy(alpha = 0.25f))
                             }
 
-                            // 2. Optical Scanline Progress Cursor
+                            // 2. Optical Scanline / Waterfall Progress Cursor
                             if (isImageNoiseActive) {
-                                val scanX = w * (opticalScanProgress % 1.0f)
-                                // Soft wide glow beam
-                                drawLine(
-                                    color = traceColor.copy(alpha = 0.18f),
-                                    start = Offset(scanX, 0f),
-                                    end = Offset(scanX, h),
-                                    strokeWidth = 14f
-                                )
-                                // Core scan cursor line
-                                drawLine(
-                                    color = traceColor.copy(alpha = 0.9f),
-                                    start = Offset(scanX, 0f),
-                                    end = Offset(scanX, h),
-                                    strokeWidth = 2f
-                                )
-                                // Scanline reticle ticks
-                                drawLine(
-                                    color = Color.White,
-                                    start = Offset(scanX - 4f, 0f),
-                                    end = Offset(scanX + 4f, 0f),
-                                    strokeWidth = 3f
-                                )
-                                drawLine(
-                                    color = Color.White,
-                                    start = Offset(scanX - 4f, h),
-                                    end = Offset(scanX + 4f, h),
-                                    strokeWidth = 3f
-                                )
+                                if (scanDirection == ScanDirection.VERTICAL_WATERFALL) {
+                                    // Vertical Waterfall: horizontal scanline cascading downwards from top to bottom
+                                    val scanY = h * (opticalScanProgress % 1.0f)
+                                    val trailHeight = 28f
+                                    val trailTop = (scanY - trailHeight).coerceAtLeast(0f)
+                                    if (scanY > trailTop) {
+                                        drawRect(
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(Color.Transparent, traceColor.copy(alpha = 0.18f)),
+                                                startY = trailTop,
+                                                endY = scanY
+                                            ),
+                                            topLeft = Offset(0f, trailTop),
+                                            size = androidx.compose.ui.geometry.Size(w, scanY - trailTop)
+                                        )
+                                    }
+
+                                    // Soft wide glow beam
+                                    drawLine(
+                                        color = traceColor.copy(alpha = 0.22f),
+                                        start = Offset(0f, scanY),
+                                        end = Offset(w, scanY),
+                                        strokeWidth = 14f
+                                    )
+                                    // Core scan cursor line
+                                    drawLine(
+                                        color = traceColor.copy(alpha = 0.95f),
+                                        start = Offset(0f, scanY),
+                                        end = Offset(w, scanY),
+                                        strokeWidth = 2.2f
+                                    )
+                                    // Left & right edge ticks
+                                    drawLine(
+                                        color = Color.White,
+                                        start = Offset(0f, scanY - 5f),
+                                        end = Offset(0f, scanY + 5f),
+                                        strokeWidth = 3f
+                                    )
+                                    drawLine(
+                                        color = Color.White,
+                                        start = Offset(w, scanY - 5f),
+                                        end = Offset(w, scanY + 5f),
+                                        strokeWidth = 3f
+                                    )
+                                    // Center waterfall crest tick
+                                    val midX = w / 2f
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        start = Offset(midX - 10f, scanY),
+                                        end = Offset(midX + 10f, scanY),
+                                        strokeWidth = 2.5f
+                                    )
+                                } else {
+                                    // Horizontal left-to-right scan
+                                    val scanX = w * (opticalScanProgress % 1.0f)
+                                    val trailWidth = 28f
+                                    val trailLeft = (scanX - trailWidth).coerceAtLeast(0f)
+                                    if (scanX > trailLeft) {
+                                        drawRect(
+                                            brush = Brush.horizontalGradient(
+                                                colors = listOf(Color.Transparent, traceColor.copy(alpha = 0.18f)),
+                                                startX = trailLeft,
+                                                endX = scanX
+                                            ),
+                                            topLeft = Offset(trailLeft, 0f),
+                                            size = androidx.compose.ui.geometry.Size(scanX - trailLeft, h)
+                                        )
+                                    }
+
+                                    // Soft wide glow beam
+                                    drawLine(
+                                        color = traceColor.copy(alpha = 0.18f),
+                                        start = Offset(scanX, 0f),
+                                        end = Offset(scanX, h),
+                                        strokeWidth = 14f
+                                    )
+                                    // Core scan cursor line
+                                    drawLine(
+                                        color = traceColor.copy(alpha = 0.9f),
+                                        start = Offset(scanX, 0f),
+                                        end = Offset(scanX, h),
+                                        strokeWidth = 2f
+                                    )
+                                    // Scanline reticle ticks
+                                    drawLine(
+                                        color = Color.White,
+                                        start = Offset(scanX - 4f, 0f),
+                                        end = Offset(scanX + 4f, 0f),
+                                        strokeWidth = 3f
+                                    )
+                                    drawLine(
+                                        color = Color.White,
+                                        start = Offset(scanX - 4f, h),
+                                        end = Offset(scanX + 4f, h),
+                                        strokeWidth = 3f
+                                    )
+                                }
                             }
 
                             // Draw Grid
@@ -451,8 +522,9 @@ fun OscilloscopeCanvas(
                                 color = Color(0xFF64748B)
                             )
                             if (isImageNoiseActive) {
+                                val scanLabel = if (scanDirection == ScanDirection.VERTICAL_WATERFALL) "WATERFALL" else "H-SCAN"
                                 Text(
-                                    text = String.format("SCAN: %02d%%", (opticalScanProgress * 100).toInt()),
+                                    text = String.format("%s: %02d%%", scanLabel, (opticalScanProgress * 100).toInt()),
                                     fontSize = 9.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,

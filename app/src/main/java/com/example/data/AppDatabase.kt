@@ -3,36 +3,14 @@ package com.example.data
 import android.content.Context
 import androidx.room.*
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.model.ChordPreset
 import com.example.model.ModulationMode
+import com.example.model.NoiseColor
 import com.example.model.WaveformType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
-
-@Dao
-interface PresetDao {
-    @Query("SELECT * FROM presets ORDER BY isFactory DESC, id ASC")
-    fun getAllPresets(): Flow<List<PresetEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPreset(preset: PresetEntity): Long
-
-    @Update
-    suspend fun updatePreset(preset: PresetEntity)
-
-    @Delete
-    suspend fun deletePreset(preset: PresetEntity)
-
-    @Query("SELECT COUNT(*) FROM presets")
-    suspend fun getCount(): Int
-
-    @Query("DELETE FROM presets WHERE name = :name AND id != :keepId")
-    suspend fun deleteDuplicatesByName(name: String, keepId: Long)
-
-    @Query("DELETE FROM presets WHERE isFactory = 1")
-    suspend fun deleteAllFactoryPresets()
-}
 
 @Dao
 interface RecordingDao {
@@ -49,7 +27,7 @@ interface RecordingDao {
     suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 7, exportSchema = false)
+@Database(entities = [PresetEntity::class, RecordingEntity::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun presetDao(): PresetDao
     abstract fun recordingDao(): RecordingDao
@@ -57,6 +35,9 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        @Volatile
+        private var REPOSITORY_INSTANCE: PresetRepository? = null
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -70,6 +51,15 @@ abstract class AppDatabase : RoomDatabase() {
                 .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        fun getPresetRepository(context: Context): PresetRepository {
+            return REPOSITORY_INSTANCE ?: synchronized(this) {
+                val db = getDatabase(context)
+                val repo = PresetRepositoryImpl(db.presetDao())
+                REPOSITORY_INSTANCE = repo
+                repo
             }
         }
 
@@ -217,8 +207,10 @@ abstract class AppDatabase : RoomDatabase() {
                     chordPreset = "SOLFEGGIO_TRIAD",
                     layer2Freq = 528.0f,
                     layer2Gain = 0.45f,
+                    layer2Wave = WaveformType.SINE.name,
                     layer3Freq = 639.0f,
                     layer3Gain = 0.40f,
+                    layer3Wave = WaveformType.SINE.name,
                     isFactory = true
                 ),
                 PresetEntity(

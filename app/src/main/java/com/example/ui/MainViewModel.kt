@@ -16,6 +16,7 @@ import com.example.model.ChordPreset
 import com.example.model.HarmonicInterval
 import com.example.model.ModulationMode
 import com.example.model.NoiseColor
+import com.example.model.ScanDirection
 import com.example.model.ScopeTheme
 import com.example.model.WaveformType
 import android.graphics.Bitmap
@@ -32,7 +33,7 @@ import java.io.File
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
-    private val presetDao = db.presetDao()
+    private val presetRepository = AppDatabase.getPresetRepository(application)
     private val recordingDao = db.recordingDao()
     private val layoutPrefs = application.getSharedPreferences("oscillopulse_layout_prefs", Context.MODE_PRIVATE)
 
@@ -111,6 +112,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _imageAnalysisInfo = MutableStateFlow<String?>(null)
     val imageAnalysisInfo = _imageAnalysisInfo.asStateFlow()
+
+    private val _scanDirection = MutableStateFlow(ScanDirection.VERTICAL_WATERFALL)
+    val scanDirection = _scanDirection.asStateFlow()
 
     // Audio Focus Ducking
     private val _isDuckingEnabled = MutableStateFlow(true)
@@ -198,7 +202,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val userFeedbackMessage = _userFeedbackMessage.asStateFlow()
 
     // Database Flows
-    val allPresets: StateFlow<List<PresetEntity>> = presetDao.getAllPresets()
+    val allPresets: StateFlow<List<PresetEntity>> = presetRepository.allPresets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customPresets: StateFlow<List<PresetEntity>> = presetRepository.customPresets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allRecordings: StateFlow<List<RecordingEntity>> = recordingDao.getAllRecordings()
@@ -221,9 +228,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Check if database needs factory presets population or deduplication
+        // Initialize presets repository
         viewModelScope.launch(Dispatchers.IO) {
-            AppDatabase.populateFactoryPresets(presetDao)
+            presetRepository.restoreFactoryPresets()
         }
 
         // Keep foreground service and sticky notification in sync with playback
@@ -477,16 +484,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun applyAnalyzedImage(bitmap: Bitmap, title: String) {
-        val analysis = ImageSonificationHelper.extractAudioProfile(bitmap)
+        val analysis = ImageSonificationHelper.extractAudioProfile(bitmap, direction = _scanDirection.value)
         _scopeBackgroundImage.value = bitmap
         _selectedImageName.value = title
-        _imageAnalysisInfo.value = String.format("Lum: %.0f • Match: %s", analysis.avgLuminance, analysis.recommendedNoiseColor.displayName)
+        val dirLabel = if (_scanDirection.value == ScanDirection.VERTICAL_WATERFALL) "Waterfall ↓" else "H-Scan →"
+        _imageAnalysisInfo.value = String.format("Lum: %.0f • %s • %s", analysis.avgLuminance, dirLabel, analysis.recommendedNoiseColor.displayName)
         _isImageNoiseActive.value = true
 
         audioEngine.imageAudioProfile = analysis.audioProfile
         audioEngine.isImageNoiseEnabled = true
         audioEngine.imageNoiseDepth = _imageNoiseDepth.value
         audioEngine.imageScanSpeedHz = _imageScanSpeedHz.value
+    }
+
+    fun setScanDirection(direction: ScanDirection) {
+        _scanDirection.value = direction
+        val currentBitmap = _scopeBackgroundImage.value
+        if (currentBitmap != null) {
+            val analysis = ImageSonificationHelper.extractAudioProfile(currentBitmap, direction = direction)
+            audioEngine.imageAudioProfile = analysis.audioProfile
+            val dirLabel = if (direction == ScanDirection.VERTICAL_WATERFALL) "Waterfall ↓" else "H-Scan →"
+            _imageAnalysisInfo.value = String.format("Lum: %.0f • %s • %s", analysis.avgLuminance, dirLabel, analysis.recommendedNoiseColor.displayName)
+        }
+        _userFeedbackMessage.value = "Image scanning set to ${direction.displayName}"
     }
 
     fun clearScopeImage() {
@@ -768,8 +788,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         selectChordPreset(preset.getChordPresetType())
         setLayer2Freq(preset.layer2Freq)
         setLayer2Gain(preset.layer2Gain)
+        setLayer2Wave(preset.getLayer2WaveType())
         setLayer3Freq(preset.layer3Freq)
         setLayer3Gain(preset.layer3Gain)
+        setLayer3Wave(preset.getLayer3WaveType())
         setModFreq(preset.modFreq)
         setModIntensity(preset.modIntensity)
         setModWave(preset.getModWaveType())
@@ -779,7 +801,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun savePreset(name: String, description: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val entity = PresetEntity(
+            presetRepository.saveCustomPreset(
                 name = name,
                 description = description,
                 carrierFreq = _carrierFreq.value,
@@ -787,6 +809,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isBinauralEnabled = _isBinauralEnabled.value,
                 leftCarrierFreq = _leftCarrierFreq.value,
                 rightCarrierFreq = _rightCarrierFreq.value,
+                modFreq = _modFreq.value,
+                modIntensity = _modIntensity.value,
+                modWave = _modWave.value.name,
+                modMode = _modMode.value.name,
                 isWhiteNoiseEnabled = _isWhiteNoiseEnabled.value,
                 whiteNoiseLevel = _whiteNoiseLevel.value,
                 noiseColor = _noiseColor.value.name,
@@ -794,31 +820,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 chordPreset = _activeChordPreset.value.name,
                 layer2Freq = _layer2Freq.value,
                 layer2Gain = _layer2Gain.value,
+                layer2Wave = _layer2Wave.value.name,
                 layer3Freq = _layer3Freq.value,
                 layer3Gain = _layer3Gain.value,
-                modFreq = _modFreq.value,
-                modIntensity = _modIntensity.value,
-                modWave = _modWave.value.name,
-                modMode = _modMode.value.name,
+                layer3Wave = _layer3Wave.value.name,
                 sampleRate = _sampleRate.value,
-                bitDepth = _bitDepth.value,
-                isFactory = false
+                bitDepth = _bitDepth.value
             )
-            presetDao.insertPreset(entity)
             _userFeedbackMessage.value = "Preset '$name' saved"
         }
     }
 
     fun deletePreset(preset: PresetEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            presetDao.deletePreset(preset)
+            presetRepository.deletePreset(preset)
             _userFeedbackMessage.value = "Deleted preset: ${preset.name}"
         }
     }
 
     fun restoreFactoryPresets() {
         viewModelScope.launch(Dispatchers.IO) {
-            AppDatabase.populateFactoryPresets(presetDao)
+            presetRepository.restoreFactoryPresets()
             _userFeedbackMessage.value = "Restored built-in factory presets"
         }
     }
