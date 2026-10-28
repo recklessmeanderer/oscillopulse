@@ -189,8 +189,8 @@ class AudioEngine(private val filesDir: File) {
             val snapshot = FloatArray(scopeBufferSize)
             var readIdx = scopeWriteIndex
             for (i in 0 until scopeBufferSize) {
-                snapshot[i] = scopeRingBuffer[readIdx % scopeBufferSize]
-                readIdx++
+                snapshot[i] = scopeRingBuffer[readIdx]
+                readIdx = (readIdx + 1) % scopeBufferSize
             }
             return snapshot
         }
@@ -508,8 +508,8 @@ class AudioEngine(private val filesDir: File) {
                     // Average mono sample for oscilloscope visualization
                     val monoScopeSample = (sampleL + sampleR) * 0.5f
                     synchronized(scopeLock) {
-                        scopeRingBuffer[scopeWriteIndex % scopeBufferSize] = monoScopeSample
-                        scopeWriteIndex++
+                        scopeRingBuffer[scopeWriteIndex] = monoScopeSample
+                        scopeWriteIndex = (scopeWriteIndex + 1) % scopeBufferSize
                     }
 
                     val mag = max(abs(sampleL), abs(sampleR))
